@@ -2,17 +2,7 @@ using StaticArrays, WriteVTK
 using OrderedCollections, Bumper
 using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
-
-
-
-# Include the main module (professional approach)
-include("../../src/small_utils.jl")
-include("../../src/topo.jl")
-include("../../src/vtkexports.jl")
-include("../../src/element_refinement.jl")
-include("../../src/lagrange_utils.jl")
-include("../../src/element_coarsening.jl")
-include("../../src/triangulation.jl")
+using Ju3VEM
 # =============================================================================
 # 3D Topology Test - Experimental Code
 # =============================================================================

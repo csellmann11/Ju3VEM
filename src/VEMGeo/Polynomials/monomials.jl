@@ -16,7 +16,7 @@ struct Monomial{T,D} <: Number
     val::T
     exp::SVector{D,Int}
 end 
-
+ 
 
 getexp(m::Monomial) = m.exp
 getval(m::Monomial) = m.val
@@ -31,6 +31,7 @@ Base.zero(::Monomial{T,D}) where {T,D} = zero(Monomial{T,D})
 Base.one(::Type{Monomial{T,D}}) where {T,D} = Monomial(one(T),SVector{D}(zero(Int) for _ in 1:D))
 Base.one(::Monomial{T,D}) where {T,D} = one(Monomial{T,D})
 
+Base.conj(m::Monomial{T,D}) where {T,D} = Monomial(conj(m.val),m.exp)
 
 
 ########## Basic Operations ##############
@@ -136,7 +137,9 @@ Base.:/(m::Monomial{T,D}, a::Number) where {T,D} =
     Monomial{T,D}(m.val / a, m.exp)
 
 
-
+# function LinearAlgebra.dot(v::AbstractVector{Monomial{T,D}},n::AbstractVector{T}) where {T,D}
+#     return sum(v[i]*n[i] for i in 1:D)
+# end
 
 
 ########## Display Functionality ##############
@@ -204,3 +207,5 @@ is_constant(m2)  # false
 function is_constant(m::Monomial{T,D}) where {T,D}
     return all(m.exp .== 0)
 end
+
+

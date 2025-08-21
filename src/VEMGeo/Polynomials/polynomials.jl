@@ -10,11 +10,19 @@ end
 
 Base.zero(p::Polynomial{T,D,L}) where {T,D,L} = p(zero(SVector{L,T}),p.base)
 
-function Polynomial(coeffs::AbstractVector{T},base::SVector{L,Monomial{T,D}}) where {T,D,L}
+Base.isequal(p::Polynomial,q::Polynomial) = p.coeffs == q.coeffs && p.base == q.base
+Base.isapprox(p::Polynomial,q::Polynomial) = p.coeffs ≈ q.coeffs && p.base == q.base
+
+function Polynomial(coeffs::AbstractVector{T},base::SVector{L,Monomial{Float64,D}}) where {T,D,L}
     return Polynomial{T,D,L}(SVector{L,T}(coeffs),base)
 end
 
 @inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = sum(c*b(x) for (c,b) in zip(p.coeffs,p.base)) 
+
+@inline function (p::Polynomial{T,D,L})(x::V,bc::StaticVector{D,T},h::T) where {T,D,L,V<:AbstractVector{T}}
+    return sum(c*b(x,bc,h) for (c,b) in zip(p.coeffs,p.base)) 
+end
+
 
 
 
@@ -22,19 +30,28 @@ const EXP_TO_IDEX_DICT_D1 = Dict{SVector{1,Int},Int}()
 const EXP_TO_IDEX_DICT_D2 = Dict{SVector{2,Int},Int}()
 const EXP_TO_IDEX_DICT_D3 = Dict{SVector{3,Int},Int}()
 
-function get_exp_to_idx_dict(exp::SVector{N,Int},O::Int) where N
-    exp_dict = if N == 1
+const EXP_TO_IDEX_DICT_D1_BB = Dict{SVector{1,Int},Int}()
+const EXP_TO_IDEX_DICT_D2_BB = Dict{SVector{2,Int},Int}()
+const EXP_TO_IDEX_DICT_D3_BB = Dict{SVector{3,Int},Int}()
+
+function get_exp_to_idx_dict(exp::SVector{N,Int},::Val{BB} = Val(false)) where {N,BB}
+    O = sum(exp)
+    exp_dict = if N == 1 && !BB
         EXP_TO_IDEX_DICT_D1
-    elseif N == 2
+    elseif N == 1 && BB
+        EXP_TO_IDEX_DICT_D1_BB
+    elseif N == 2 && !BB
         EXP_TO_IDEX_DICT_D2
-    elseif N == 3
+    elseif N == 3 && !BB
         EXP_TO_IDEX_DICT_D3
+    elseif N == 3 && BB
+        EXP_TO_IDEX_DICT_D3_BB
     else
         throw(ErrorException("Only supported for N == 1, 2 or 3"))
     end
 
     get!(exp_dict,exp) do 
-        base = get_base(BaseInfo{N,O,1}(),Val(false))
+        base = get_base(BaseInfo{N,O,1}(),Val(BB))
         for (i,m) in enumerate(base.base)
             if m.exp == exp 
                 return i
@@ -44,6 +61,112 @@ function get_exp_to_idx_dict(exp::SVector{N,Int},O::Int) where N
     end
 end
 
+@generated function get_order(::Polynomial{T,D,L}) where {T,D,L}
+    O = 0 
+    while true 
+        base = get_base(BaseInfo{D,O,1}(),Val(false))
+        if length(base) == L 
+            return O
+        else
+            O += 1
+        end
+    end
+end
+
+
+function Base.:*(p::Polynomial{T1,D,L1},q::Polynomial{T1,D,L2}) where {T1,D,L1,L2}
+    O = get_order(p) + get_order(q)
+    new_base = get_base(BaseInfo{D,O,1}()).base
+    # _coeffs = zero(MVector{length(new_base),T1})
+    _coeffs = FixedSizeVector{T1}(undef,length(new_base))
+    _coeffs .= zero(T1)
+    for (i,mi) in enumerate(p.base)
+        ci = p.coeffs[i]
+        # ci == zero(ci) & continue
+        for (j,mj) in enumerate(q.base)
+            m = mi * mj
+            idx = get_exp_to_idx_dict(m.exp)
+            _coeffs[idx] += ci * q.coeffs[j]
+        end
+    end
+    coeffs = SVector{length(new_base)}(_coeffs)
+    return Polynomial(coeffs,new_base)
+end
+
+function poly_pow(p::Polynomial{T,D,L},::Val{n}) where {T,D,L,n} 
+    @assert n >= 0 "Exponent must be non-negative; got $(n)"
+    n == 1 && return p 
+    # n == 0 && return Polynomial(SVector{L}(i == 1 ? one(T) : zero(T) for i in 1:L),p.base)
+    n == 0 && return Polynomial(SA[one(T)],get_base(BaseInfo{D,0,1}()).base)
+
+    if isodd(n)
+        return p * poly_pow(p,Val(n-1))
+    else
+        p = poly_pow(p,Val(n÷2))
+        return p * p
+    end
+end
+
+# function poly_pow(p::Polynomial{T,D,L}, ::Val{n}) where {T,D,L,n}
+#     @assert n >= 0 "Exponent must be non-negative; got $(n)"
+    
+#     # Special cases
+#     n == 0 && return Polynomial(SVector{L}(1.0 for _ in 1:L), p.base)
+#     n == 1 && return p
+    
+#     # Binary exponentiation
+#     result = Polynomial(SVector{L}(1.0 for _ in 1:L), p.base)  # Initialize to 1
+#     base = p
+#     exp = n
+    
+#     while exp > 0
+#         if isodd(exp)
+#             result = result * base
+#         end
+#         exp >>= 1  # Divide by 2 using bit shift
+#         exp > 0 && (base = base * base)  # Square the base if we'll need it
+#     end
+    
+#     return result
+# end
+
+
+
+# function poly_pow(p::Polynomial{T,D,L},::Val{n}) where {T,D,L,n} 
+#     @assert n >= 0 "Exponent must be non-negative; got $(n)"
+
+#     if n == 0
+#         base0 = get_base(BaseInfo{D,0,1}()).base
+#         coeffs0 = zero(MVector{length(base0),Float64})
+#         coeffs0[1] = 1.0
+#         return Polynomial(coeffs0, base0)
+#     elseif n == 1
+#         return p
+#     end
+
+#     # Iterative exponentiation by squaring using the optimized polynomial product
+#     base_poly = p
+#     result = begin
+#         base0 = get_base(BaseInfo{D,0,1}()).base
+#         coeffs0 = zero(MVector{length(base0),Float64})
+#         coeffs0[1] = 1.0
+#         Polynomial(coeffs0, base0)
+#     end
+
+#     k = n
+#     while k > 0
+#         if isodd(k)
+#             result = result * base_poly
+#         end
+#         k >>= 1
+#         if k > 0
+#             base_poly = base_poly * base_poly
+#         end
+#     end
+
+#     return result
+# end
+
 
 
 function extract_constructor(::Type{T}) where T<:AbstractArray
@@ -51,11 +174,22 @@ function extract_constructor(::Type{T}) where T<:AbstractArray
 end
 const MonoPoly{T,D} = Union{Polynomial{T,D},Monomial{T,D}}
 
+@inline Base.Vector(itr::Base.Generator) = collect(itr)
+
 function (v::AbstractVector{<:MonoPoly})(x)
     U = length(typeof(v)) # does only work for statically sized vectors 
     return extract_constructor(typeof(v))(SVector{U}(v[i](x) for i in 1:U))
 end
 
+function (v::Union{Vector{M},FixedSizeVector{M}} where M<:MonoPoly)(x) 
+    # return extract_constructor(typeof(v))(v[i](x) for i in 1:length(v))
+    # collect_as(extract_constructor(typeof(v)),v[i](x) for i in eachindex(v))
+    out = FixedSizeVector{Float64}(undef,length(v))
+    for i in eachindex(v)
+        out[i] = v[i](x)
+    end
+    return out
+end
 
 
 function (v::AbstractVector{<:MonoPoly})(x,bc,h)
@@ -200,31 +334,20 @@ end
 
 
 @inline get_base_len(D, O, U) = div(prod(O+1:O+D), factorial(D)) * U
-@generated function get_order(::Polynomial{T,D,L}) where {T,D,L}
-    O = 0 
-    while true 
-        base = get_base(BaseInfo{D,O,1}(),Val(false))
-        if length(base) == L 
-            return O
-        else
-            O += 1
-        end
-    end
-end
 
 
 function poly_grad(p::Polynomial{T,D,L},h::T) where {T,D,L}
     O = get_order(p)
-    grad_base = get_base(BaseInfo{D,O-1,1}())
+    grad_base  = get_base(BaseInfo{D,O-1,1}())
     grad_coeffs = SVector{2}(zero(MVector{length(grad_base),T}) for _ in 1:2)
 
-    for i in 2:L 
+    @inbounds for i in 2:L 
         nabm = ∇(p.base[i],h) 
         for d in 1:D 
             exp = getexp(nabm[d])
             val = getval(nabm[d]) 
             val == zero(T) && continue
-            idx = get_exp_to_idx_dict(exp,O)
+            idx = get_exp_to_idx_dict(exp)
             grad_coeffs[d][idx] += val * p.coeffs[i]
         end
     end

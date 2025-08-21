@@ -2,22 +2,16 @@ using StaticArrays, WriteVTK
 using OrderedCollections, Bumper
 using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
+using LoopVectorization
+using Ju3VEM
 
-# Include the main module (professional approach)
-include("../../src/small_utils.jl")
-include("../../src/lagrange_utils.jl")
-include("../../src/topo.jl")
-include("../../src/vtkexports.jl")
-include("../../src/element_refinement.jl")
-include("../../src/element_coarsening.jl")
-include("../../src/triangulation.jl")
 # =============================================================================
 # 3D Topology Test - Experimental Code
 # =============================================================================
 
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
-nx,ny,nz = 10,10,4
+nx,ny,nz = 30,30,30
 dx = 1.0; dy = 1.0; dz = 1.0
 
 # Generate coordinate ranges
@@ -71,6 +65,7 @@ println("Volume node IDs for volume 2: ", get_volume_node_ids(topo, 2))
 # Refine first volume and export
 # =============================================================================
 let topo = deepcopy(topo)
+    GC.gc(true)
     @time for vol in RootIterator{3,4}(topo)
         if rand(0:1) |> Bool
             _refine!(vol,topo)
@@ -78,11 +73,15 @@ let topo = deepcopy(topo)
     end
 end
 
-@time for vol in RootIterator{3,4}(topo)
-    if rand(0:1) |> Bool
-        _refine!(vol,topo)
-    end
-end
+# vols = [vol for vol in RootIterator{3,4}(topo)]
+# Threads.@threads for vol in vols
+#     if rand(0:1) |> Bool
+#         _refine!(vol,topo)
+#     end
+# end
+
+
+
 
 # @code_warntype _refine!(get_volumes(topo)[1],topo)
 
@@ -95,18 +94,5 @@ end
 
 # _coarsen!(get_volumes(topo)[3],topo)
 
-geometry_to_vtk(topo, "3d_test1")
+geometry_to_vtk(topo, "vtk/3d_test1")
 
-# Attempt tetrahedralization for a random volume; export tets if successful
-begin
-    try
-        vol_id = 1
-        tets_local = tetrahedralize_volume_local_ids(topo, vol_id)
-        tet_topo = build_tet_topology_from_volume(topo, vol_id; tets_local)
-        geometry_to_vtk(tet_topo, "arrow_tets")
-    catch err
-        @warn "Ear-peeling tetrahedralization failed for 3d_test1 volume 1" err
-    end
-end
-
-nothing

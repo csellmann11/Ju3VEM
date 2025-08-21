@@ -1,12 +1,6 @@
-module EarClippingTriangulation2D
-
-# export triangulate_polygon
-using Tensorial
 using StaticArrays
 using Random
 using LinearAlgebra
-using JuVEM.AdaptivMeshes: Node
-using JuVEM
 using FixedSizeArrays
 
 """
@@ -149,7 +143,6 @@ function triangulate_polygon(nodes::AbstractVector{V};
 
         triangles[tria_counter] = best_triangle[2]
         tria_counter += 1
-        # push!(triangles, best_triangle[2])
 
         if !ear_found throw(ErrorException("No ear found")) end
         deleteat!(vertex_indices, best_triangle[3])
@@ -158,7 +151,6 @@ function triangulate_polygon(nodes::AbstractVector{V};
     # Add the final triangle
     if length(vertex_indices) == 3
         triangles[end] = (vertex_indices[1], vertex_indices[2], vertex_indices[3])
-        # push!(triangles, (vertex_indices[1], vertex_indices[2], vertex_indices[3]))
     end
 
     return triangles
@@ -254,7 +246,7 @@ function is_point_in_triangle(p::V1, v1::V2, v2::V3, v3::V4) where {
 end
 
 # Alternative implementation using cross products
-function is_point_in_triangle_cross(p::Vec{2,T}, v1::Vec{2,T}, v2::Vec{2,T}, v3::Vec{2,T}) where T
+function is_point_in_triangle_cross(p::StaticVector{2,T}, v1::StaticVector{2,T}, v2::StaticVector{2,T}, v3::StaticVector{2,T}) where T
     # Check on which side of each edge the point lies
     d1 = sign_of_point_to_line(p, v1, v2)
     d2 = sign_of_point_to_line(p, v2, v3)
@@ -283,59 +275,9 @@ function sign_of_point_to_line(p::V1, a::V2, b::V3) where {
     return (b[1] - a[1]) * (p[2] - a[2]) - (b[2] - a[2]) * (p[1] - a[1])
 end
 
-# Debug function to visualize the triangulation
-function verify_triangulation(nodes::AbstractVector{V}, triangles::Vector{Tuple{Int,Int,Int}}) where {V<:AbstractVector{<:Real}}
-
-    D = 2 # assumes statically sized vector
-    @assert D == length(V)
-
-    println("Triangulation result:")
-    for (i, tri) in enumerate(triangles)
-        v1, v2, v3 = nodes[tri[1]], nodes[tri[2]], nodes[tri[3]]
-        area = signed_area_2x(v1, v2, v3) / 2
-        println("Triangle $i: $(tri) - Area: $area")
-    end
-end
-
-end # module EarClippingTriangulation 
-
-
-#############################
-# 3D Planar Triangulation and 3D Tetrahedralization
-#############################
-
-module Triangulation3D
-
-using StaticArrays
-using LinearAlgebra
-using FixedSizeArrays
 using Statistics
-try
-    using Main.EarClippingTriangulation2D: triangulate_polygon
-catch
-    using ..EarClippingTriangulation2D: triangulate_polygon
-end
 
-# Bring topology API into scope whether included at top-level (Main) or within a
-# parent module (e.g., Ju3VEM). Prefer Main; fall back to parent module.
-try
-    using Main: Topology, get_nodes, get_coords, get_volume_node_ids, get_area_node_ids, get_volume_area_ids,
-        add_node!, add_area!, add_volume!, RootIterator, get_areas
-catch
-    import ..Topology
-    import ..get_nodes
-    import ..get_coords
-    import ..get_volume_node_ids
-    import ..get_area_node_ids
-    import ..get_volume_area_ids
-    import ..add_node!
-    import ..add_area!
-    import ..add_volume!
-    import ..RootIterator
-end
-
-import ..Monomial
-
+# Quadrature for triangle integration
 include("gauss_quad_tri_table.jl")
 
 const Vec3{T} = SVector{3,T}
@@ -348,7 +290,7 @@ function get_plane_parameters(points::AbstractVector{<:StaticVector{3,T}}) where
     e1 = points[2] - o
     # Find point that is not collinear with e1
     n = zero(Vec3{T})
-    i3 = 3
+    i3 = 3 
     while i3 ≤ length(points)
         e2 = points[i3] - o
         n = cross(e1, e2)
@@ -360,7 +302,7 @@ function get_plane_parameters(points::AbstractVector{<:StaticVector{3,T}}) where
     u = normalize(e1 - dot(e1, nscaled) * nscaled)
     v = cross(nscaled, u)
 
-    return u,v,nscaled,n
+    return u,v,nscaled,n,o
 end
 
 
@@ -379,10 +321,11 @@ function project_to_plane!(points2::AbstractVector{<:StaticVector{2,T}},
     @assert length(points) ≥ 3 "Need at least 3 points"
     @assert length(points2) == length(points)
 
-    u,v,n,_ = get_plane_parameters(points)
+    u,v,n,_,_ = get_plane_parameters(points)
+    p0      = points[1]
 
     for (i,p) in enumerate(points)
-        d = p - points[1]
+        d = p - p0
         points2[i] = SVector(dot(d, u), dot(d, v))
     end
     return u, v, n
@@ -401,33 +344,39 @@ end
 
 Triangulate a planar polygon in 3D with arbitrary orientation. Returns a vector
 of triangle index tuples referring to the input order.
+The algorithm projects all points on the plane in the main direction of the normal vector. 
+The projection simply drops the component of the point in the main direction of the normal vector.
 """
 function triangulate_planar_polygon3D(points::AbstractVector{<:StaticVector{3,T}}; find_optimal_ear::Bool=false) where T
     n = length(points)
 
-    pts2 = FixedSizeArray{SVector{2,T}}(undef, n)
-    _, _, _ = project_to_plane!(pts2, points)
-    # Ensure CCW orientation for ear clipping
+    u,v,normal,_,_ = get_plane_parameters(points)
+    zero_dir = argmax(abs.(normal))
+
+    pts2 = FixedSizeVector{SVector{2,T}}(undef, n)
+    if zero_dir == 1 
+        for i in eachindex(points)
+            pts2[i] = SVector(points[i][2], points[i][3])
+        end
+    elseif zero_dir == 2
+        for i in eachindex(points)
+            pts2[i] = SVector(points[i][1], points[i][3])
+        end 
+    elseif zero_dir == 3
+        for i in eachindex(points)
+            pts2[i] = SVector(points[i][1], points[i][2])
+        end
+    end
+
     s = zero(T)
-    for i in 1:n
+    for i in eachindex(pts2)
         j = i == n ? 1 : i + 1
         s += pts2[i][1]*pts2[j][2] - pts2[j][1]*pts2[i][2]
     end
 
     pts2o = s<0 ? reverse(pts2) : pts2
-    
-    perm  = s<0 ? (n:-1:1) : (1:1:n)
-    # perm::Vector{Int} = collect(perm)
-    tris_local = triangulate_polygon(pts2o; find_optimal_ear)
-    # Map back to original indices
-    tris = FixedSizeArray{SVector{3,Int}}(undef, length(tris_local))
-    for (i,t) in enumerate(tris_local)
-        # tris[i] = SVector(perm[t[1]], perm[t[2]], perm[t[3]])
-        tris[i] = perm[SVector(t)]
-    end
-    return tris
-    # return [SVector(perm[t[1]], perm[t[2]], perm[t[3]]) for t in tris_local]
 
+    return triangulate_polygon(pts2o; find_optimal_ear)
 end
 
 @inline signed_tet_volume(a::StaticVector{3,T}, b::StaticVector{3,T}, c::StaticVector{3,T}, d::StaticVector{3,T}) where T =
@@ -450,12 +399,10 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
 
     # Find 4 non-coplanar points to seed
     i1 = 1
-    i2 = findfirst(i -> i ≠ i1 && !isapprox(points[i], points[i1]; atol=eps(T)*10), 1:N)
-    @assert i2 !== nothing
-    i2 = i2::Int
+    i2 = 2 # assumes that all points are unique
     # pick i3 not collinear
-    i3 = nothing
-    for i in 1:N
+    i3 = -1
+    for i in 3:N
         if i != i1 && i != i2
             n = cross(points[i2] - points[i1], points[i] - points[i1])
             if norm(n) > sqrt(eps(T))
@@ -464,11 +411,11 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
             end
         end
     end
-    @assert i3 !== nothing "Points appear to be collinear"
+    @assert i3 != -1 "Points appear to be collinear"
     i3 = i3::Int
     # pick i4 not coplanar
-    i4 = nothing
-    for i in 1:N
+    i4 = -1
+    for i in 4:N
         if i != i1 && i != i2 && i != i3
             vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
             if abs(vol) > sqrt(eps(T))
@@ -477,8 +424,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
             end
         end
     end
-    @assert i4 !== nothing "Points appear to be coplanar"
-    i4 = i4::Int
+    @assert i4 != -1 "Points appear to be coplanar"
 
     used = SA[i1,i2,i3,i4]
     # Ensure positive orientation for seed tet
@@ -500,6 +446,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
         end
     end
 
+    #TODO: Replace this in the future with the barycenter
     interior_ref = (points[a] + points[b] + points[c] + points[d]) / T(4)
    
     boundary = FixedSizeArray{NTuple{3,Int}}(undef, 4)
@@ -509,6 +456,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     boundary[4] = orient_face_outward((c,d,a), interior_ref)
   
 
+    #! This bound might be to small
     max_tet_number = 2*length(points) - 7
     tet_counter = 1
     tets = FixedSizeArray{NTuple{4,Int}}(undef, max_tet_number)
@@ -521,8 +469,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     edge_map = Dict{Tuple{Int,Int}, Tuple{Int,Tuple{Int,Int}}}()
     for p in 1:N 
         p in used && continue
-        # Determine visible faces from p
-        # visible = falses(length(boundary))
+        # Determine visible faces of boundary from p
         visible = FixedSizeArray{Bool}(undef, length(boundary))
         for (idx, (i,j,k)) in enumerate(boundary)
             n = cross(points[j] - points[i], points[k] - points[i])
@@ -548,7 +495,6 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
                 end
                 tets[tet_counter] = tet
                 tet_counter += 1
-                # push!(tets, tet)
             end
         end
         # Collect horizon edges = edges on boundary between visible and non-visible regions
@@ -564,16 +510,13 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
                 end
             end
         end
-        # horizon_oriented = Tuple{Int,Int}[]
         empty!(horizon_oriented)
-        # for (key, (cnt, oriented)) in edge_map
         for (cnt, oriented) in values(edge_map)
             if cnt == 1
                 push!(horizon_oriented, oriented)
             end
         end
         # Build new boundary: remove visible faces, add new faces (p with horizon edges)
-        # new_boundary = NTuple{3,Int}[]
         empty!(new_boundary)
         for (idx, tri) in enumerate(boundary)
             if !visible[idx]
@@ -679,37 +622,6 @@ function triangulate_area(topo::Topology{3}, area_id::Int; find_optimal_ear::Boo
 end
 
 
-"""
-    FaceTriangulations3D
-
-Precompute and store a triangulation for every face (area) in a `Topology{3}`.
-Stores triangles as local indices into each face's node list.
-"""
-struct FaceTriangulations3D
-    topo::Topology{3}
-    area_tris::Vector{Vector{NTuple{3,Int}}}
-end
-
-function FaceTriangulations3D(topo::Topology{3}; find_optimal_ear::Bool=false)
-    nareas = length(get_areas(topo))
-    tris_per_area = Vector{Vector{NTuple{3,Int}}}(undef, nareas)
-    for area_id in 1:nareas
-        gids = get_area_node_ids(topo, area_id)
-        if isempty(gids)
-            tris_per_area[area_id] = NTuple{3,Int}[]
-            continue
-        end
-        local_tris = triangulate_area_local_ids(topo, area_id; find_optimal_ear=find_optimal_ear)
-        tris = Vector{NTuple{3,Int}}(undef, length(local_tris))
-        for (i,t) in enumerate(local_tris)
-            tris[i] = (t[1], t[2], t[3])
-        end
-        tris_per_area[area_id] = tris
-    end
-    return FaceTriangulations3D(topo, tris_per_area)
-end
-
-@inline get_area_triangles(ft::FaceTriangulations3D, area_id::Int) = ft.area_tris[area_id]
 
 """
     polygon_area3D(points::AbstractVector{<:SVector{3,T}}) where T
@@ -798,59 +710,7 @@ function triangle_area_3d_and_normal(A, B, C)
 end
 
 
-function integrate_polynomial_over_face(m::Monomial, face_id::Int, topo::Topology{3}, ft)
-    area_node_ids = get_area_node_ids(topo, face_id)
-    tris = get_area_triangles(ft, face_id)
-
-    n = get_plane_parameters(@views get_nodes(topo)[area_node_ids])[4]
-    order = min(1, sum(m.exp))
-    quad_rule = _TriangleQuadRuleLookup[order]
-
-    int = 0.0
-    for tri in tris
-        i,j,k = tri
-        p1 = get_nodes(topo)[area_node_ids[i]]
-        p2 = get_nodes(topo)[area_node_ids[j]]
-        p3 = get_nodes(topo)[area_node_ids[k]]
-        nx = n[1] 
-
-        for (w,p) in zip(quad_rule.weights, quad_rule.points)
-            ξ1,ξ2 = p
-            ξ3    = 1-ξ1-ξ2 
-            x     = p1*ξ1 + p2*ξ2 + p3*ξ3
-            int  += w*m(x)*nx
-        end
-    end
-    return int, n
-end
-
-function integrate_polynomial_over_volume(m::Monomial, tet_id::Int, topo::Topology{3}, ft)
-
-    exp = SVector(m.exp[1]+1, m.exp[2], m.exp[3])
-    quad_rule = _TriangleQuadRuleLookup[sum(exp)]
-
-    mface       = Monomial(m.val, exp)
-    v_node_ids  = get_volume_node_ids(topo, tet_id)
-
-    #! make this more robust
-    element_center = mean(get_nodes(topo)[vi] for vi in v_node_ids)
-
-    int = 0.0
-    for area_id in get_volume_area_ids(topo, tet_id)
-        _area_int,n = integrate_polynomial_over_face(mface, area_id, topo, ft) 
-        face_node   = get_nodes(topo)[get_area_node_ids(topo, area_id)[1]]
-        λ           = check_normal_sign(n, face_node, element_center)
-        int        += λ*_area_int
-    end 
-    return int/(exp[1])
-end
 
 
-
-end # module Triangulation3D
-
-# Convenience top-level wrappers for existing tests/utilities that call these
-tetrahedralize_volume_local_ids(topo, volume_id) = Triangulation3D.tetrahedralize_volume_local_ids(topo, volume_id)
-tetrahedralize_volume(topo, volume_id) = Triangulation3D.tetrahedralize_volume(topo, volume_id)
-build_tet_topology_from_volume(topo, volume_id; tets_local) = Triangulation3D.build_tet_topology_from_volume(topo, volume_id; tets_local)
+ 
 

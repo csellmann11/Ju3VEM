@@ -4,19 +4,7 @@ using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
 using LoopVectorization
 using Test
-
-# Include the main module (professional approach)
-include("../../src/small_utils.jl")
-include("../../src/topo.jl")
-include("../../src/vtkexports.jl")
-include("../../src/element_refinement.jl")
-include("../../src/lagrange_utils.jl")
-include("../../src/element_coarsening.jl")
-include("../../src/triangulation.jl")
-
-include("../../src/Polynomials/polynomials.jl")
-include("../../src/Polynomials/monomials.jl")
-include("../../src/polynomial_integration.jl")
+using Ju3VEM
 
 @testset "2D Integration Tests" begin
     node_coords = 2 .* [SVector(0.0, 0.0), SVector(1.0, 0.0), SVector(1.0, 1.0), SVector(0.0, 1.0)]

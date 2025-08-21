@@ -4,13 +4,7 @@ using OrderedCollections, Bumper
 using Statistics
 using SmallCollections, Chairmarks
 using JET
-# Include library files
-include("../../src/small_utils.jl")
-include("../../src/topo.jl")
-include("../../src/vtkexports.jl")
-include("../../src/triangulation.jl")
-
-using .Triangulation3D
+using Ju3VEM
 
 ################################################################################
 # 1) Triangulate a planar polygon in 3D (arbitrary orientation)
@@ -25,7 +19,7 @@ let
         SA[1.0, 1.0],
         SA[0.0, 1.0],
         SA[0.5, 0.5],
-    ]
+    ] |> reverse
 
     # Random oriented plane via orthonormal basis
     rng = MersenneTwister(1234)
@@ -38,13 +32,13 @@ let
     poly3 = [o + p[1]*u + p[2]*v for p in poly2]
 
     # Triangulate in 3D
-    tris = Triangulation3D.triangulate_planar_polygon3D(poly3)
+    tris = triangulate_planar_polygon3D(poly3)
 
-    b_res = @b Triangulation3D.triangulate_planar_polygon3D($poly3)
+    b_res = @b triangulate_planar_polygon3D($poly3)
     display(b_res)
 
     # Check area sum and positivity
-    area_true = Triangulation3D.polygon_area3D(poly3)
+    area_true = polygon_area3D(poly3)
     area_sum = 0.0
     for (i,j,k) in tris
         a,b,c = poly3[i], poly3[j], poly3[k]
@@ -55,14 +49,14 @@ let
     @assert isapprox(area_sum, area_true; rtol=1e-10, atol=1e-12)
 
     # Export as 2D topology using projected 2D points
-    o,u,v, pts2 = Triangulation3D.project_to_plane(poly3)
+    o,u,v, pts2 = project_to_plane(poly3)
     topo2 = Topology{2}()
     node_ids2 = Int[]
     append!(node_ids2, add_node!.(pts2, Ref(topo2)))
     for (i,j,k) in tris
         add_area!(SVector(node_ids2[i], node_ids2[j], node_ids2[k]), topo2)
     end
-    geometry_to_vtk(topo2, "triangulated_plane_2d")
+    geometry_to_vtk(topo2, "vtk/triangulated_plane_2d")
 end
 
 ################################################################################
@@ -88,8 +82,8 @@ let
     add_volume!(faces_cube, topoC)
     vol_id = 1
 
-    tets_local, l2g = Triangulation3D.tetrahedralize_volume(topoC, vol_id)
-    b_res = @b Triangulation3D.tetrahedralize_volume($topoC, $vol_id)
+    tets_local, l2g = tetrahedralize_volume(topoC, vol_id)
+    b_res = @b tetrahedralize_volume($topoC, $vol_id)
     display(b_res)
     pts = get_coords.(get_nodes(topoC)[l2g])
 
@@ -106,10 +100,10 @@ let
     @assert isapprox(vol_sum, vol_true; rtol=1e-6, atol=1e-6)
 
     # Build a tet-only topology for vtk
-    tet_topo = Triangulation3D.build_tet_topology_from_volume(topoC, vol_id; tets_local)
+    tet_topo = build_tet_topology_from_volume(topoC, vol_id; tets_local)
     
 
-    geometry_to_vtk(tet_topo, "cube_tets")
+    geometry_to_vtk(tet_topo, "vtk/cube_tets")
 
     # Pyramid test
     topoP = Topology{3}()
@@ -129,11 +123,11 @@ let
     add_volume!(facesP, topoP)
     vol_idP = 1
 
-    tets_localP, l2gP = Triangulation3D.tetrahedralize_volume(topoP, vol_idP)
+    tets_localP, l2gP = tetrahedralize_volume(topoP, vol_idP)
 
     ptsP = get_coords.(get_nodes(topoP)[l2gP])
 
-    vol_trueP = Triangulation3D.volume_of_topo_volume(topoP, vol_idP)
+    vol_trueP = volume_of_topo_volume(topoP, vol_idP)
     vol_sumP = 0.0
     for (a,b,c,d) in tets_localP
         pa,pb,pc,pd = ptsP[a], ptsP[b], ptsP[c], ptsP[d]
@@ -144,8 +138,8 @@ let
 
     @assert isapprox(vol_sumP, vol_trueP; rtol=1e-10, atol=1e-12)
 
-    tet_topoP = Triangulation3D.build_tet_topology_from_volume(topoP, vol_idP; tets_local=tets_localP)
-    geometry_to_vtk(tet_topoP, "pyramid_tets")
+    # tet_topoP = Triangulation3D.build_tet_topology_from_volume(topoP, vol_idP; tets_local=tets_localP)
+    # geometry_to_vtk(tet_topoP, "pyramid_tets")
 end
 
 ################################################################################
@@ -164,7 +158,7 @@ let
     end
 
     # Triangulate using 2D ear clipping
-    tris = EarClippingTriangulation2D.triangulate_polygon(star2d)
+    tris = triangulate_polygon(star2d)
 
     # Polygon area via shoelace
     area_true = 0.0
@@ -191,7 +185,7 @@ let
     for (i,j,k) in tris
         add_area!(SVector(node_ids[i], node_ids[j], node_ids[k]), topo_star)
     end
-    geometry_to_vtk(topo_star, "star2d_tri")
+    geometry_to_vtk(topo_star, "vtk/star2d_tri")
 end
 
 ################################################################################
@@ -223,11 +217,11 @@ let
     vol_id = 1
 
     # Tetrahedralize and check volume & positivity
-    tets_local, l2g = Triangulation3D.tetrahedralize_volume(topo, vol_id)
+    tets_local, l2g = tetrahedralize_volume(topo, vol_id)
     pts = get_coords.(get_nodes(topo)[l2g])
 
     # Compute volume by summing oriented volumes, flip if needed per tet
-    vol_true = Triangulation3D.volume_of_topo_volume(topo, vol_id)
+    vol_true = volume_of_topo_volume(topo, vol_id)
     vol_sum = 0.0
     for (a,b,c,d) in tets_local
         pa,pb,pc,pd = pts[a], pts[b], pts[c], pts[d]
@@ -241,8 +235,8 @@ let
     end
     @assert isapprox(vol_sum, vol_true; rtol=1e-8, atol=1e-10)
 
-    tet_topo = Triangulation3D.build_tet_topology_from_volume(topo, vol_id; tets_local)
-    geometry_to_vtk(tet_topo, "hex_prism_tets")
+    tet_topo = build_tet_topology_from_volume(topo, vol_id; tets_local)
+    geometry_to_vtk(tet_topo, "vtk/hex_prism_tets")
 end
 
 # ################################################################################

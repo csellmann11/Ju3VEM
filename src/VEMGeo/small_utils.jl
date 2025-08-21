@@ -39,20 +39,19 @@ function get_unique_values(v::AbstractVector{<:AbstractVector{Int}},
     @assert maximum(ids) <= length(v) "ids are out of bounds"
     max_len = sum(length,v[i] for i in ids)
     pointer = 0
-    unique_values = @no_escape begin 
-        _unique_values = @alloc(Int,max_len)
-        @inbounds for id in ids
-            values = v[id]
-            for value in values
-                if value ∉ @view(_unique_values[1:pointer])
-                    _unique_values[pointer+1] = value
-                    pointer += 1
-                end
+    _unique_values = ID_VEC_TYPE{Int}(undef, max_len)
+    @inbounds for id in ids
+        values = v[id]
+        for value in values
+            if value ∉ @view(_unique_values[1:pointer])
+                _unique_values[pointer+1] = value
+                pointer += 1
             end
         end
-        _unique_values[1:pointer]
     end
-    return unique_values
+    return _unique_values[1:pointer]
+    
+    
 end
 
 """
@@ -96,4 +95,18 @@ end
 function find_single_intersec(vecs::AbstractVector{<:AbstractVector{Int}}) 
     return find_single_intersec(vecs,1:length(vecs))
 
+end
+
+
+
+
+function max_node_distance(nodes::AbstractVector{V}) where {T<:Real,V <: AbstractVector{T}}
+    max_dist = zero(T)
+    n_nodes = length(nodes) 
+    @inbounds for i in 1:n_nodes-1, j in i+1:n_nodes
+        n1 = nodes[i]; n2 = nodes[j]
+        dist = norm(n2-n1)
+        max_dist = max(max_dist, dist)
+    end
+    return max_dist
 end

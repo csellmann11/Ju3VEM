@@ -63,24 +63,26 @@ is_active(m::Union{Node,NManifold}) = m.id > 0
 #########################
 # Topology
 #########################
+using FixedSizeArrays
+Base.convert(::FixedSizeVector{T,V},v::SVector{N,T}) where {T,N,V} = FixedSizeVector{T,V}(v) 
+const ID_VEC_TYPE{T} = FixedSizeVector{T,Memory{T}}
 @kwdef struct Topology{D}
 
-
     nodes::Vector{Node{D,Float64}}              = Node{D,Float64}[]
-    edges::OrderedDict{Vector{Int},Edge{D}}     = OrderedDict{Vector{Int},Edge{D}}()
-    areas::OrderedDict{Vector{Int},Area{D}}     = OrderedDict{Vector{Int},Area{D}}()
-    volumes::OrderedDict{Vector{Int},Volume{D}} = OrderedDict{Vector{Int},Volume{D}}()
+    edges::OrderedDict{ID_VEC_TYPE{Int},Edge{D}}     = OrderedDict{ID_VEC_TYPE{Int},Edge{D}}()
+    areas::OrderedDict{ID_VEC_TYPE{Int},Area{D}}     = OrderedDict{ID_VEC_TYPE{Int},Area{D}}()
+    volumes::OrderedDict{ID_VEC_TYPE{Int},Volume{D}} = OrderedDict{ID_VEC_TYPE{Int},Volume{D}}()
 
 
-    connectivity::Matrix{Vector{Vector{Int}}} = begin
-        mat = Matrix{Vector{Vector{Int}}}(undef, 4, 4)
+    connectivity::Matrix{Vector{ID_VEC_TYPE{Int}}} = begin
+        mat = Matrix{Vector{ID_VEC_TYPE{Int}}}(undef, 4, 4)
         mat[1, 2] = edges.keys
         mat[1, 3] = areas.keys
         mat[3, 4] = volumes.keys #! volumes are index by face_ids
-        mat[1, 4] = Vector{Vector{Int}}()
+        mat[1, 4] = Vector{ID_VEC_TYPE{Int}}()
         for i in 1:D+1, j in 2:i-1
             if i != j && (i,j) != (4,3)
-                mat[j, i] = Vector{Vector{Int}}()
+                mat[j, i] = Vector{ID_VEC_TYPE{Int}}()
             end
         end 
         mat
@@ -108,20 +110,20 @@ function get_geo_vec(::Any, ::Val{N}) where {N}
 end
 
 #Info: access volume information
-@inline get_volume_node_ids(topo)::Vector{Vector{Int}}      = topo.connectivity[1, 4]
-@inline get_volume_node_ids(topo, id::Int)::Vector{Int}     = get_volume_node_ids(topo)[id]
-@inline get_volume_edge_ids(topo)::Vector{Vector{Int}}      = topo.connectivity[2, 4]
-@inline get_volume_edge_ids(topo, id::Int)::Vector{Int}     = get_volume_edge_ids(topo)[id]
-@inline get_volume_area_ids(topo)::Vector{Vector{Int}}      = topo.connectivity[3, 4]
-@inline get_volume_area_ids(topo, id::Int)::Vector{Int}     = get_volume_area_ids(topo)[id]
+@inline get_volume_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[1, 4]
+@inline get_volume_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_node_ids(topo)[id]
+@inline get_volume_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[2, 4]
+@inline get_volume_edge_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_edge_ids(topo)[id]
+@inline get_volume_area_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[3, 4]
+@inline get_volume_area_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_area_ids(topo)[id]
 #Info: access face information
-@inline get_area_node_ids(topo)::Vector{Vector{Int}}        = topo.connectivity[1, 3]
-@inline get_area_node_ids(topo, id::Int)::Vector{Int}       = get_area_node_ids(topo)[id]
-@inline get_area_edge_ids(topo)::Vector{Vector{Int}}        = topo.connectivity[2, 3]
-@inline get_area_edge_ids(topo, id::Int)::Vector{Int}       = get_area_edge_ids(topo)[id]
+@inline get_area_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 3]
+@inline get_area_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_area_node_ids(topo)[id]
+@inline get_area_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[2, 3]
+@inline get_area_edge_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_area_edge_ids(topo)[id]
 #Info: access edge information
-@inline get_edge_node_ids(topo)::Vector{Vector{Int}}        = topo.connectivity[1, 2]
-@inline get_edge_node_ids(topo, id::Int)::Vector{Int}       = get_edge_node_ids(topo)[id]
+@inline get_edge_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 2]
+@inline get_edge_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_edge_node_ids(topo)[id]
 
 
 @inline add_volume_node_id!(topo, dest::Int, val::Int) =
@@ -170,13 +172,15 @@ end
 
 function rotate_to_min(v::AbstractVector{<:Integer})
     # Rotate the vector so that the smallest element is first
-    return circshift(v, -(argmin(v) - 1))
+    dest = ID_VEC_TYPE{Int}(undef, length(v))
+    circshift!(dest,v,-(argmin(v) - 1))
+    return dest
 end
 
-@inline edge_hash(n1::Int, n2::Int) = SVector(minmax(n1, n2))
+@inline edge_hash(n1::Int, n2::Int) = ID_VEC_TYPE(SVector(minmax(n1, n2)))
 @inline edge_hash(v::Union{SVector{2,Int},Tuple{Int,Int}}) = edge_hash(v...)
 @inline area_hash(v) = rotate_to_min(v)
-@inline volume_hash(v) = sort(v)
+@inline volume_hash(v) = sort!(ID_VEC_TYPE(v))
 
 function add_edge!(node_ids::AbstractVector,
     topo::Topology{D},
@@ -222,7 +226,9 @@ function add_area!(_node_ids::AbstractVector{Int},
 
     node_ids = get_area_node_ids(topo, id)
 
-    push!(get_area_edge_ids(topo), zeros(Int,length(node_ids)))
+
+    area_edge_ids = ID_VEC_TYPE{Int}(undef,length(node_ids))
+    push!(get_area_edge_ids(topo), area_edge_ids)
     for (i, node_id) in enumerate(node_ids)
         ip1 = get_next_idx(node_ids, i)
         edge_id = add_edge!(SA[node_id, node_ids[ip1]],
@@ -278,26 +284,26 @@ function add_volume!(node_ids_col::AbstractVector{<:AbstractVector{Int}},
     volume_dict = topo.volumes
     temp_id = length(volume_dict) + 1
  
-    @no_escape begin
-        _face_ids = @alloc(Int, n_faces)
 
-        for (i, node_ids) in enumerate(node_ids_col)
-            face_id = add_area!(node_ids, topo, 0, parent_ref_level)
-            _face_ids[i] = face_id
-        end
+    _face_ids = ID_VEC_TYPE{Int}(undef, n_faces)
 
-        volume = get!(volume_dict, volume_hash(_face_ids),
-            Volume{D}(temp_id, parent_ref_level + 1, parent_id))
-
-        activate!(volume, topo)
-        id = volume.id
-
-
-        if id == temp_id
-            push!(get_volume_node_ids(topo), get_unique_values(node_ids_col))
-        end
-        volume.id
+    for (i, node_ids) in enumerate(node_ids_col)
+        face_id = add_area!(node_ids, topo, 0, parent_ref_level)
+        _face_ids[i] = face_id
     end
+
+    volume = get!(volume_dict, volume_hash(_face_ids),
+        Volume{D}(temp_id, parent_ref_level + 1, parent_id))
+
+    activate!(volume, topo)
+    id = volume.id
+
+
+    if id == temp_id
+        push!(get_volume_node_ids(topo), get_unique_values(node_ids_col))
+    end
+    volume.id
+    
 end
 
 
@@ -369,6 +375,7 @@ function RootIterator{D,1}(topo::Topology{D}) where {D}
     return RootIterator{D,1}(topo, state_is_root)
 end
 
+Base.firstindex(r::RootIterator{D,Idx}) where {D,Idx} = 1
 
 function Base.iterate(r::RootIterator{D,Idx}, state=1) where {D,Idx}
 
@@ -453,6 +460,21 @@ function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F
         end
     end
 end
+
+
+function iterate_volume_areas(fun::F1, topo::Topology{D}, volume_id::Int, cond::F2=is_root) where {D,F1,F2}
+    area_ids = get_volume_area_ids(topo, volume_id)
+    areas = get_areas(topo)
+    for area_id in area_ids
+        area = areas[area_id]
+        apply_f_on(cond, area, areas, false) do 
+            fun(area, volume_id,topo)
+        end
+    end
+end
+
+
+
 
 """
     apply_f_on(f::F1, cond::F2,

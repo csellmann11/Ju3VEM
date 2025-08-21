@@ -2,11 +2,7 @@ using StaticArrays, WriteVTK
 using OrderedCollections, Bumper
 using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
-include("../../src/small_utils.jl")
-include("../../src/topo.jl")
-include("../../src/vtkexports.jl")
-include("../../src/element_refinement.jl")
-include("../../src/triangulation.jl")
+using Ju3VEM
 
 # Build a square pyramid: base in z=0 plane, apex above center
 topo = Topology{3}()
