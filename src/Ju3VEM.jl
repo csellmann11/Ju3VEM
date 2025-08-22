@@ -15,7 +15,10 @@ module VEMGeo
     using LoopVectorization
     using Collects
     using Symbolics
-    Symbolics.RuntimeGeneratedFunctions.init(@__MODULE__)
+    using Bumper
+    using FastGaussQuadrature
+    using LazyArrays
+    # Symbolics.RuntimeGeneratedFunctions.init(@__MODULE__)
 
     # Load core geometry/topology and utilities first (dependency order matters)
     include("VEMGeo/topo.jl")
@@ -30,24 +33,30 @@ module VEMGeo
     # Polynomials (includes monomials and stretched_matrices internally)
     include("VEMGeo/Polynomials/polynomials.jl")
     include("VEMGeo/Polynomials/poly_tansform.jl")
+    include("VEMGeo/sym_integration.jl")
 
     # Triangulation and 3D utilities (flattened; no submodules inside the file)
     include("VEMGeo/triangulation.jl")
     include("VEMGeo/integration.jl")
+    include("flatten_vecs.jl")
+
+    # include("mesh.jl")
+    # include("face_projector.jl")
+    # include("volume_projector.jl")
 
     # Exports: expose primary types and functions
     export 
         # Types
         Node, NManifold, Topology, Edge, Area, Volume, RootIterator, 
         Polynomial, Monomial, PolynomialBase, BaseInfo, StretchedMatrix, 
-        TriangleQuadRule, Topology, 
+        TriangleQuadRule, Topology, FlattenVecs,
         # Topology getters/setters
         get_coords, get_id, is_active, is_root, 
         get_nodes, get_edges, get_areas, get_volumes, 
         get_volume_node_ids, get_volume_edge_ids, get_volume_area_ids, 
         get_area_node_ids, get_area_edge_ids, get_edge_node_ids, 
         add_node!, add_edge!, add_area!, add_volume!, 
-        get_iterative_area_node_ids, iterate_element_edges, iterate_volume_areas, 
+        get_iterative_area_vertex_ids, iterate_element_edges, iterate_volume_areas, 
         apply_f_on, apply_f_on_roots, num_roots, 
         # Utils
         get_next_idx, get_prev_idx, get_unique_values, find_single_intersec, max_node_distance,
@@ -71,7 +80,10 @@ module VEMGeo
         # Poly transform
         compute_transformation_coeffs2d_to_3d, compute_transformation_coeffs3d_to_2d,
         compute_transformation_coeffs3d_to_2d!,compute_transformation_coeffs2d_to_2d!,
-        compute_transformation_coeffs2d_to_2d
+        compute_transformation_coeffs2d_to_2d,
+        # Sym integration
+        precompute_face_monomials, compute_face_integral, compute_face_integral_unshifted,
+        get_area, get_bc
 end # module VEMGeo
 
 # Re-export the VEMGeo API from the top-level module

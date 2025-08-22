@@ -110,3 +110,38 @@ function max_node_distance(nodes::AbstractVector{V}) where {T<:Real,V <: Abstrac
     end
     return max_dist
 end
+
+
+
+
+function resize_and_fill!(dest::AbstractVector,data)
+    resize!(dest,size(data)|>only)
+    for i in eachindex(dest,data)
+        dest[i] = data[i]
+    end
+end
+
+function resize_and_fill!(dest::AbstractVector,
+    data,ids::AbstractVector{Int})
+    resize!(dest,size(ids)|>only)
+    for i in eachindex(dest,ids)
+        dest[i] = data[ids[i]]
+    end
+end
+
+
+
+
+function get_unscaled_normal(n1::StaticVector{2,Float64},n2::StaticVector{2,Float64})
+    return @inbounds SVector(n1[2]-n2[2],n2[1]-n1[1])
+end
+
+"""
+function returns the scaled normal. 
+The second node is passed first for a ccw ordering
+"""
+function get_normal(n1::V,n2::V) where {T<:Number,V <:AbstractVector{T}}
+    n = get_unscaled_normal(n1,n2)
+    len = sqrt(sum(abs2,n))
+    return n/len, len
+end

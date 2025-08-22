@@ -333,7 +333,7 @@ end
 
 
 
-@inline get_base_len(D, O, U) = div(prod(O+1:O+D), factorial(D)) * U
+@inline get_base_len(D, O, U) = max(div(prod(O+1:O+D), factorial(D)) * U,0)
 
 
 function poly_grad(p::Polynomial{T,D,L},h::T) where {T,D,L}

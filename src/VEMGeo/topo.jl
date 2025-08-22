@@ -22,7 +22,7 @@ Base.getindex(n::Node{D,T}, i::Int) where {D,T} = get_coords(n)[i]
 
 Base.zero(::Type{Node{D,T}}) where {D,T} = Node(zero(SVector{D,T})) # to create placeholder nodes
 Base.zero(n::Node) = zero(typeof(n))
-Base.rand(::Type{Node{D}}) where D = Node{D}(-1, @SVector rand(D))
+Base.rand(::Type{Node{D,T}}) where {D,T} = Node(-1, @SVector rand(T,D))
 
 
 #########################
@@ -314,8 +314,7 @@ end
 
 #TODO: check performance implications of union return type
 @inline function get_edge(n1::Int, n2::Int, topo::Topology{D}) where D
-    edge_hash = edge_hash(SVector(n1, n2))
-    edge = get(topo.edges, edge_hash, nothing)
+    edge = get(topo.edges, edge_hash(SVector(n1, n2)), nothing)
     return edge
 end
 
@@ -364,6 +363,10 @@ struct RootIterator{D,Idx}
     state_is_root::BitVector
 end
 
+function RootIterator{Idx}(topo::Topology{D}) where {D,Idx}
+    return RootIterator{D,Idx}(topo)
+end
+
 function RootIterator{D,Idx}(topo::Topology{D}) where {D,Idx}
     state_is_root::BitVector = is_root.(get_geo_vec(topo, Val(Idx)))
     return RootIterator{D,Idx}(topo, state_is_root)
@@ -407,7 +410,7 @@ Base.length(r::RootIterator{D,Idx}) where {D,Idx} = num_roots(get_geo_vec(r.topo
 # Tree utils
 #############################################
 """
-    get_iterative_area_node_ids(area::Area{D}, topo::Topology{D},
+    get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
         abs_ref_level::Int=typemax(Int)) where D
 
 Get the node ids of the mesh of an area.
@@ -417,15 +420,26 @@ Get the node ids of the mesh of an area.
 - `topo::Topology{D}`: The topology to get the mesh node ids from.
 - `abs_ref_level::Int`: Does not go below this refinement level in the recursive search
 """
-function get_iterative_area_node_ids(area::Area{D}, topo::Topology{D},
+function get_iterative_area_vertex_ids!(
+    vertex_ids::AbstractVector{Int},
+    area::Area{D}, topo::Topology{D},
     abs_ref_level::Int=typemax(Int)) where D
 
-    node_ids = Int[]
+    empty!(vertex_ids)
     cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge)
     iterate_element_edges(topo, area.id, cond) do node_id, _, _
-        push!(node_ids, node_id)
+        push!(vertex_ids, node_id)
     end
-    return node_ids
+    return nothing
+end
+
+
+function get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
+    abs_ref_level::Int=typemax(Int)) where D
+
+    vertex_ids = Int[]
+    get_iterative_area_vertex_ids!(vertex_ids, area, topo, abs_ref_level)
+    return vertex_ids
 end
 
 """
@@ -467,8 +481,8 @@ function iterate_volume_areas(fun::F1, topo::Topology{D}, volume_id::Int, cond::
     areas = get_areas(topo)
     for area_id in area_ids
         area = areas[area_id]
-        apply_f_on(cond, area, areas, false) do 
-            fun(area, volume_id,topo)
+        apply_f_on(cond, area, areas, false) do root_area, _
+            fun(root_area, area, volume_id, topo)
         end
     end
 end

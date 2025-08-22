@@ -95,7 +95,7 @@ function _refine!(area::Area{D},topo::Topology{D}) where D
 
 
 
-    new_geo_nodes = get_iterative_area_node_ids(area,topo,
+    new_geo_nodes = get_iterative_area_vertex_ids(area,topo,
             area.refinement_level+1)
 
     # Create quadrilaterals by connecting barycenter to refined edge nodes
