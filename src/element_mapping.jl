@@ -115,21 +115,36 @@ function get_local_volume_moment_ids_view(enm::ElementNodeMapping)
 end
 
 
-# ids = collect(1:10)
-# enm = ElementNodeMapping() 
-# for id in ids
-#     add_node_id!(enm,id)
-# end
-# finish_node_insertion!(enm)
-# ids = collect(11:20)
-# for id in ids
-#     add_edge_node_id!(enm,id)
-# end
+function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
+    facedata_col::Dict{Int,FaceData{D,K,L}}) where {K,D,L,ET<:ElType{K}}
 
-# ids = collect(21:30)
-# for id in ids
-#     add_node_id!(enm,id)
-# end
+    topo = mesh.topo 
+    enm = ElementNodeMapping() 
+    iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
+        node_ids = face_data.face_node_ids
+        for id in node_ids.v.args[1]
+            add_node_id!(enm,id)
+        end
+        finish_node_insertion!(enm)
+
+        K == 1 && return 
+        for id in node_ids.v.args[2]
+            add_edge_node_id!(enm,id)
+        end
+        finish_edge_node_insertion!(enm)
+        for id in node_ids.v.args[3]
+            add_face_moment_id!(enm,id)
+        end
+        finish_face_moment_insertion!(enm)
+
+        D == 2 && return 
+        for id in node_ids.v.args[4]
+            add_volume_moment_id!(enm,id)
+        end
+        finish_volume_moment_insertion!(enm)
+    end
+  
+end
 
 
 

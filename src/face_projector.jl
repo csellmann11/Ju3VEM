@@ -1,6 +1,7 @@
 using Ju3VEM 
 
 using Ju3VEM.VEMGeo:FaceIntegralData
+using Ju3VEM.VEMGeo: D2FaceParametrization, project_to_2d_abs, project_to_2d_rel, project_to_3d
 
 struct FaceData{D,K,L}
     face_node_ids::FlattenVecs{3,Int}
@@ -19,6 +20,7 @@ function create_B_mat(mesh::Mesh{D,ET},
     center        = get_bc(fd)
     full_node_ids = fd.face_node_ids
 
+    plane = fd.dΩ.plane
 
     base     = get_base(BaseInfo{2,O,1}())
     mom_base = get_base(BaseInfo{2,O-2,1}())
@@ -57,12 +59,12 @@ function create_B_mat(mesh::Mesh{D,ET},
         qp_count = 1
         # in the case of gradient values, m is already is gradient
         ∇m = ∇(m,hf)
-        cnode_2d = SA[dot(vertices[1],fd.dΩ.u),dot(vertices[1],fd.dΩ.v)]
+        cnode_2d = project_to_2d_abs(vertices[1],plane)
         for i in eachindex(vertices)
             ni = get_next_idx(vertices,i)
 
             # get current and next node
-            nnode_2d = SA[dot(vertices[ni],fd.dΩ.u),dot(vertices[ni],fd.dΩ.v)]
+            nnode_2d = project_to_2d_abs(vertices[ni],plane)
             n, len = get_normal(nnode_2d,cnode_2d) 
 
             # influence of the mesh nodes. Each edge is toched by 2 nodes
@@ -72,7 +74,7 @@ function create_B_mat(mesh::Mesh{D,ET},
             # influence of the quadratur nodes.
             for j in 2:O
                 quad_point = edge_vertices[qp_count]
-                quad_point_2d = SA[dot(quad_point,fd.dΩ.u),dot(quad_point,fd.dΩ.v)]
+                quad_point_2d = project_to_2d_abs(quad_point,plane)
                 x = (quad_point_2d - center)/hf
 
                 #INFO: For this integral the locations need to be lobatto points
@@ -102,6 +104,7 @@ function create_D_mat(mesh::Mesh{D,ET},
     fd::FaceData) where {D,O,ET<:ElType{O}}
 
     base = get_base(BaseInfo{2,O,1}())
+    plane = fd.dΩ.plane
 
     area   = get_area(fd); 
     hf     = get_hf(fd); 
@@ -125,7 +128,7 @@ function create_D_mat(mesh::Mesh{D,ET},
         # Nodal evaluations
         for (i,node) in enumerate(Iterators.flatten((vertices,edge_vertices)))
 
-            node_2d = SA[dot(node,fd.dΩ.u),dot(node,fd.dΩ.v)]
+            node_2d = project_to_2d_abs(node,plane)
             D_mat[i,idx] = m(node_2d,center,hf)
         end
 

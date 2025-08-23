@@ -5,18 +5,19 @@ using LinearAlgebra
 using Symbolics, Chairmarks
 using Test
 using FixedSizeArrays, Bumper
-
+using Ju3VEM.VEMGeo: D2FaceParametrization, project_to_2d_abs, project_to_2d_rel, project_to_3d, project_to_3d_flat
 
 
 quad_nodes = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]] .* 2 .+ Scalar(SA[1.0,1.0,1.0])
 hf = max_node_distance(quad_nodes)
-u, v, n, nus,p0 = get_plane_parameters(quad_nodes)
+# u, v, n, nus,p0 = get_plane_parameters(quad_nodes)
+plane = D2FaceParametrization(quad_nodes)
 
 p02d = SA[dot(p0,u),dot(p0,v)]
 
-a   = face2d_sym_integral(quad_nodes,0,0,zero(p02d),u,v)
-bcu = face2d_sym_integral(quad_nodes,1,0,zero(p02d),u,v)/a
-bcv = face2d_sym_integral(quad_nodes,0,1,zero(p02d),u,v)/a
+a   = face2d_sym_integral(quad_nodes,0,0,SA[0.0,0.0],plane)
+bcu = face2d_sym_integral(quad_nodes,1,0,SA[0.0,0.0],plane)/a
+bcv = face2d_sym_integral(quad_nodes,0,1,SA[0.0,0.0],plane)/a
 
 face_data = precompute_face_monomials(quad_nodes,Val(5))
 
@@ -26,16 +27,18 @@ face_data = precompute_face_monomials(quad_nodes,Val(5))
 
 
 x1 = quad_nodes[1]; x2 = quad_nodes[2]; x3 = quad_nodes[3]; x4 = quad_nodes[4]
-x2d1 = SA[dot(x1,u),dot(x1,v)]
-x2d2 = SA[dot(x2,u),dot(x2,v)]
-x2d3 = SA[dot(x3,u),dot(x3,v)]
-x2d4 = SA[dot(x4,u),dot(x4,v)]
+x2d1 = project_to_2d_abs(x1,plane)
+x2d2 = project_to_2d_abs(x2,plane)
+x2d3 = project_to_2d_abs(x3,plane)
+x2d4 = project_to_2d_abs(x4,plane)
 
 quad_nodes_2d = [x2d1, x2d2, x2d3, x2d4] 
 
-a2d   = face2d_sym_integral(quad_nodes_2d,0,0,zero(x2d1))
-bcu2d = face2d_sym_integral(quad_nodes_2d,1,0,zero(x2d1))/a2d
-bcv2d = face2d_sym_integral(quad_nodes_2d,0,1,zero(x2d1))/a2d
+plane2d = D2FaceParametrization(quad_nodes_2d)
+
+a2d   = face2d_sym_integral(quad_nodes_2d,0,0,SA[0.0,0.0],plane2d)
+bcu2d = face2d_sym_integral(quad_nodes_2d,1,0,SA[0.0,0.0],plane2d)/a2d
+bcv2d = face2d_sym_integral(quad_nodes_2d,0,1,SA[0.0,0.0],plane2d)/a2d
 bc    = SA[bcu2d,bcv2d] 
 bc3d = SA[2.0,2.0,2.0]
 
@@ -43,24 +46,22 @@ bc3d = SA[2.0,2.0,2.0]
 @test bcu ≈ bcu2d
 @test bcv ≈ bcv2d  
 
-bc3d = (face_data.bc[1]-p02d[1])*u + (face_data.bc[2]-p02d[2])*v + p0
+bc3d = project_to_3d(face_data.bc,plane)
 @test bc3d ≈ SA[2.0,2.0,2.0]
 
-@test x2 ≈ (x2d2[1]-p02d[1])*u + (x2d2[2]-p02d[2])*v + p0
-@test x3 ≈ (x2d3[1]-p02d[1])*u + (x2d3[2]-p02d[2])*v + p0
-@test x4 ≈ (x2d4[1]-p02d[1])*u + (x2d4[2]-p02d[2])*v + p0
+@test x2 ≈ project_to_3d(x2d2,plane)
+@test x3 ≈ project_to_3d(x2d3,plane)
+@test x4 ≈ project_to_3d(x2d4,plane)
 
 true_area = (x2d2[1] - x2d1[1])*(x2d3[2] - x2d1[2])
 
 
 m3d = Monomial(1.0,SA[2,1,1])
-coeffs2d = compute_transformation_coeffs3d_to_2d(m3d,p0,u,v)
-poly2d   = Polynomial(coeffs2d,get_base(BaseInfo{2,4,1}()).base)
 
 
-bc3d = face_data.u*(face_data.bc[1] - p02d[1]) + face_data.v*(face_data.bc[2] - p02d[2]) + face_data.p0
+bc3d = project_to_3d(face_data.bc,face_data.plane)
 
-bc3d_plane = face_data.u*face_data.bc[1] + face_data.v*face_data.bc[2]
+bc3d_plane = project_to_3d_flat(face_data.bc,face_data.plane)
 
 
 I = compute_face_integral(m3d,face_data)
@@ -104,12 +105,12 @@ p02d = SA[dot(p0,u),dot(p0,v)]
 
 
 face_data2 = precompute_face_monomials(quad_nodes2,Val(5))
-bc3d = face_data2.u*(face_data2.bc[1] - p02d[1]) + face_data2.v*(face_data2.bc[2] - p02d[2]) + face_data2.p0
-bc3d_plane  = face_data2.u*face_data2.bc[1] + face_data2.v*face_data2.bc[2] 
+bc3d = project_to_3d(face_data2.bc,face_data2.plane)
+bc3d_plane  = project_to_3d_flat(face_data2.bc,face_data2.plane)
 
 
 m3d = Monomial(1.0,SA[0,1,1])
-compute_transformation_coeffs3d_to_2d(m3d,bc3d,u,v)
+
 I = compute_face_integral(m3d,face_data2,zero(bc3d),2.0)
 
 b = @b compute_face_integral($m3d,$face_data2,zero($bc3d),2.0)

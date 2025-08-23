@@ -1,9 +1,38 @@
 using Ju3VEM
 
-function create_volume_bmat(mesh::Mesh{3,ET},
+"""
+    get_outward_normal(bcvol,face_data::FaceData{3,K,L}) where {K,L}
+
+Returns the outward normal of the face w.r.t the volume center. 
+!!!WARNING!!! Only works reliable for convex volumes.
+"""
+function get_outward_normal(bcvol,face_data::FaceData{3,K,L}) where {K,L}
+    #TODO: move this function closer to geometric utils of the package
+    plane = face_data.dΩ.plane
+    normal = face_data.dΩ.n  
+
+    face_bc3d = project_to_3d(face_data.bc,plane)
+    face_to_vol_center = bcvol - face_bc3d 
+
+    if dot(face_to_vol_center,normal) < 0
+        return normal
+    else
+        return -normal
+    end
+end
+
+function get_outward_normal(bcvol,face_data::FaceData{2,K,L}) where {K,L}
+    return face_data.dΩ.plane.n
+end
+
+
+
+
+function create_volume_bmat(volume_id::Int,
+    mesh::Mesh{3,ET},
     bcvol,hvol,
-    facedata_col,
-    volume_node_mapping::ElementNodeMapping) where {K,ET<:ElType{K}}
+    facedata_col::Dict{Int,FaceData{3,K,L}},
+    volume_node_mapping::ElementNodeMapping) where {K,L,ET<:ElType{K}}
 
     #TODO: write the face data structure
     topo = mesh.topo
@@ -14,17 +43,11 @@ function create_volume_bmat(mesh::Mesh{3,ET},
     n_nodes = get_n_nodes(volume_node_mapping)
     bmat = zeros(length(base_3d),n_nodes)
 
-    iterate_volume_areas(topo,volume_id) do root_area, parent_area, volume_id, topo
+    iterate_volume_areas(facedata_col,topo,volume_id) do root_area, face_data, topo
 
-
-        face_data        = facedata_col[root_area.id]
         face_normal      = get_outward_normal(bcvol,face_data)
-
-        #TODO: write the face projectors
         ΠsL2             = face_data.ΠsL2
-
-        #! maby collect those already when computing the face projector
-        face_node_ids    = get_iterative_area_node_ids(root_area,mesh)
+        face_node_ids    = face_data.face_node_ids
 
         integrated_vals = MVector{length(base_2d),Float64}(undef)
         for (i,m3d) in enumerate(base_3d)

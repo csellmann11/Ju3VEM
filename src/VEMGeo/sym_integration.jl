@@ -100,24 +100,17 @@ end
 struct FaceIntegralData{D,K,L} 
     hf::Float64
     bc::SVector{2,Float64} 
-    p0::SVector{D,Float64}
-    u ::SVector{D,Float64} 
-    v ::SVector{D,Float64}  
-    n ::SVector{D,Float64}
+    plane::D2FaceParametrization{D}
  
     integrals    ::SVector{L,Float64}
-    # face_node_ids::V 
-    # ΠsL2         ::Matrix{Float64}
-    # maybe add the projection matrix here?
 end
 
-function FaceIntegralData{K}(hf::Float64,bc::SVector{2,Float64},p0::SVector{D,Float64},
-    u::SVector{D,Float64},v::SVector{D,Float64},
-    n::SVector{D,Float64},integrals::SVector{L,Float64}) where {D,K,L}
+function FaceIntegralData{K}(hf::Float64,bc::SVector{2,Float64},
+    plane::D2FaceParametrization{D},integrals::SVector{L,Float64}) where {D,K,L}
 
     # face_node_ids = FlattenVecs{3,Int}()
     # ΠsL2 = Float64[;;]
-    return FaceIntegralData{D,K,L}(hf,bc,p0,u,v,n,integrals)
+    return FaceIntegralData{D,K,L}(hf,bc,plane,integrals)
 end
 
 @inline get_area(fd::FaceIntegralData) = fd.integrals[1]
@@ -127,8 +120,7 @@ end
 function face2d_sym_integral(
     node_coords::AbstractVector{<:StaticVector{D,T}}, 
     e1::Int,e2::Int,bc::StaticVector{2,T},
-    u::StaticVector{D,T} = SA[1.0,0.0],
-    v::StaticVector{D,T} = SA[0.0,1.0]) where {D,T}
+    plane::D2FaceParametrization{D}) where {D,T}
 
     int_val = zero(T)
 
@@ -136,11 +128,11 @@ function face2d_sym_integral(
     gpoints,gweights =  
             get_gauss_legendre(ngpoints)
 
-    nci2d   = SA[dot(node_coords[1],u)  ,dot(node_coords[1],v)] 
+    nci2d   = project_to_2d_abs(node_coords[1],plane) 
     for i in eachindex(node_coords)
         ip1 = get_next_idx(node_coords,i)
         
-        nci2d_n = SA[dot(node_coords[ip1],u),dot(node_coords[ip1],v)]
+        nci2d_n = project_to_2d_abs(node_coords[ip1],plane)
 
         x1,y1 = nci2d   - bc
         x2,y2 = nci2d_n - bc
@@ -181,24 +173,25 @@ function precompute_face_monomials(
     base = get_base(BaseInfo{2,K,1}()).base  
 
     hf           = max_node_distance(face_nodes)
-    u,v,n,_,p0   = get_plane_parameters(face_nodes) 
+    # u,v,n,_,p0   = get_plane_parameters(face_nodes)
+    plane = D2FaceParametrization(face_nodes)
     # p02d         = SA[dot(p0,u),dot(p0,v)]
 
     L         = length(base)
     integrals = zero(MVector{L,T})
-    face_area = face2d_sym_integral(face_nodes,0,0,SA[0.0,0.0],u,v)
-    bcu       = face2d_sym_integral(face_nodes,1,0,SA[0.0,0.0],u,v)/face_area
-    bcv       = face2d_sym_integral(face_nodes,0,1,SA[0.0,0.0],u,v)/face_area
+    face_area = face2d_sym_integral(face_nodes,0,0,SA[0.0,0.0],plane)
+    bcu       = face2d_sym_integral(face_nodes,1,0,SA[0.0,0.0],plane)/face_area
+    bcv       = face2d_sym_integral(face_nodes,0,1,SA[0.0,0.0],plane)/face_area
     bc        = SA[bcu,bcv]
     integrals[1] = face_area
 
     for i in 4:L
         m   = base[i]
         exp = m.exp
-        integrals[i] = face2d_sym_integral(face_nodes,exp[1],exp[2],bc,u,v)
+        integrals[i] = face2d_sym_integral(face_nodes,exp[1],exp[2],bc,plane)
     end
 
-    return FaceIntegralData{K}(hf,bc,p0,u,v,n,SVector(integrals))
+    return FaceIntegralData{K}(hf,bc,plane,SVector(integrals))
 end
 
 function precompute_face_monomials(
@@ -217,15 +210,17 @@ function compute_face_integral(m::Monomial{T,3},
     order = sum(m.exp) 
     len   = get_base_len(2,order,1)
 
-    p02d       = SA[dot(fd.p0,fd.u),dot(fd.p0,fd.v)]
-    bc3d_face  = fd.u*(fd.bc[1] - p02d[1]) + fd.v*(fd.bc[2] - p02d[2]) + fd.p0
+    plane = fd.plane 
 
-    if offset === nothing
-        offset = bc3d_face 
+    bc3d_face  = project_to_3d(fd.bc,plane)
+
+    offset_2d = if offset === nothing 
+        project_to_2d_abs(bc3d_face,plane)
+    else 
+        project_to_2d_abs(offset,plane)
     end
-    
-    offset_2d = SA[dot(offset,fd.u),dot(offset,fd.v)]
-    plane_offset = fd.u*offset_2d[1]  + fd.v*offset_2d[2]
+
+    flat_offset = project_to_3d_flat(offset_2d,plane)
 
 
     @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
@@ -233,7 +228,7 @@ function compute_face_integral(m::Monomial{T,3},
     ∫m = @no_escape begin 
         coeffs = @alloc(Float64,len)
         compute_transformation_coeffs3d_to_2d!(
-            coeffs,m, (bc3d_face-plane_offset),fd.u,fd.v)
+            coeffs,m, (bc3d_face-flat_offset),plane.u,plane.v)
 
 
         ∫m = zero(T)
@@ -273,4 +268,50 @@ function compute_face_integral_unshifted(m::Monomial{T,2},
     idx   = get_exp_to_idx_dict(m.exp)
 
     return fd.integrals[idx]/h^sum(m.exp)
+end
+
+
+
+function compute_face_integral(m2d::Monomial{T,2},m3d::Monomial{T,3},
+    fd::FaceIntegralData{D,K,L},
+    offset::BT = nothing,
+    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L,BT<:Union{Nothing,SVector{3,T}}}
+
+    # order = sum(m3d.exp) + sum(m2d.exp)
+    order3 = sum(m3d.exp); order2 = sum(m2d.exp)
+    len   = get_base_len(2,order3+order2,1)
+
+    full_base = get_base(BaseInfo{2,K,1}()).base
+
+    plane = fd.plane 
+
+    bc3d_face  = project_to_3d(fd.bc,plane)
+
+    offset_2d = if offset === nothing 
+        project_to_2d_abs(bc3d_face,plane)
+    else 
+        project_to_2d_abs(offset,plane)
+    end
+
+    flat_offset = project_to_3d_flat(offset_2d,plane)
+
+
+    @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
+
+    ∫m = @no_escape begin 
+        coeffs = @alloc(Float64,len)
+        compute_transformation_coeffs3d_to_2d!(
+            coeffs,m3d, (bc3d_face-flat_offset),plane.u,plane.v)
+
+
+        ∫m = zero(T)
+        @inbounds for (i,ci) in enumerate(coeffs)
+            new_exp   = m2d.exp + full_base[i].exp 
+            new_coeff = m2d.val * ci 
+            idx = get_exp_to_idx_dict(new_exp)
+            ∫m += new_coeff*fd.integrals[idx]
+        end
+        ∫m/(hv^order3*hf^order2)
+    end
+    return ∫m
 end

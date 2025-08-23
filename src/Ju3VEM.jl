@@ -30,6 +30,9 @@ module VEMGeo
     include("VEMGeo/element_coarsening.jl")
     include("VEMGeo/vtkexports.jl")
 
+
+    # include("element_mapping.jl")#! relies on eltye and mesh
+
     # Polynomials (includes monomials and stretched_matrices internally)
     include("VEMGeo/Polynomials/polynomials.jl")
     include("VEMGeo/Polynomials/poly_tansform.jl")
@@ -49,7 +52,7 @@ module VEMGeo
         # Types
         Node, NManifold, Topology, Edge, Area, Volume, RootIterator, 
         Polynomial, Monomial, PolynomialBase, BaseInfo, StretchedMatrix, 
-        TriangleQuadRule, Topology, FlattenVecs,
+        TriangleQuadRule, Topology, FlattenVecs, ElementNodeMapping,
         # Topology getters/setters
         get_coords, get_id, is_active, is_root, 
         get_nodes, get_edges, get_areas, get_volumes, 
@@ -57,7 +60,7 @@ module VEMGeo
         get_area_node_ids, get_area_edge_ids, get_edge_node_ids, 
         add_node!, add_edge!, add_area!, add_volume!, 
         get_iterative_area_vertex_ids, iterate_element_edges, iterate_volume_areas, 
-        apply_f_on, apply_f_on_roots, num_roots, 
+        apply_f_on, apply_f_on_roots, num_roots, create_node_mapping,
         # Utils
         get_next_idx, get_prev_idx, get_unique_values, find_single_intersec, max_node_distance,
         # Refinement / Coarsening

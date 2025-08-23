@@ -250,27 +250,24 @@ get_face_moments(mesh)
 get_volume_moments(mesh)
 
 
-base   = get_base(BaseInfo{2,1,1}())
-
-intdata_col = Dict{Int,FaceIntegralData{3,1,length(base)}}()
-for face in RootIterator{3}(topo)
-    intdata_col[face.id] = precompute_face_monomials(face.id, topo, Val(1))
-end
 
 include("face_projector.jl")
+include("element_mapping.jl")
+include("volume_projector.jl")
 
-full_node_ids = FlattenVecs{3,Int}()
+base   = get_base(BaseInfo{2,1,1}())
 
-face_id = 1
-area = get_areas(topo)[face_id]
-get_iterative_area_node_ids!(full_node_ids,area,mesh)
-
-ΠsL2 = zeros(length(base),length(full_node_ids))
-face_data = FaceData(full_node_ids,intdata_col[face_id],ΠsL2)
-
-
-dm = create_D_mat(mesh,face_data)
-bm = create_B_mat(mesh,face_data)
+facedata_col = Dict{Int,FaceData{3,1,length(base)}}()
+for face in RootIterator{3}(topo)
+    dΩ = precompute_face_monomials(face.id, topo, Val(1))
+    facedata_col[face.id] = h1_projectors!(face.id,mesh,dΩ)
+end
 
 
-fd = h1_projectors!(2,mesh,intdata_col[2])
+enm = create_node_mapping(1,mesh,facedata_col)
+# create_volume_bmat(1,mesh,SA[0.5,0.5,0.5],1.0,facedata_col,mesh.nodes)
+
+
+
+
+

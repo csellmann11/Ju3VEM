@@ -476,13 +476,17 @@ function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F
 end
 
 
-function iterate_volume_areas(fun::F1, topo::Topology{D}, volume_id::Int, cond::F2=is_root) where {D,F1,F2}
+function iterate_volume_areas(fun::F1, 
+    facedata_col::Dict{Int,FD}, 
+    topo::Topology{D}, volume_id::Int, 
+    cond::F2=is_root) where {D,F1,F2,FD}
+
     area_ids = get_volume_area_ids(topo, volume_id)
     areas = get_areas(topo)
     for area_id in area_ids
         area = areas[area_id]
         apply_f_on(cond, area, areas, false) do root_area, _
-            fun(root_area, area, volume_id, topo)
+            fun(root_area, facedata_col[root_area.id], topo)
         end
     end
 end
