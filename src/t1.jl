@@ -1,5 +1,5 @@
 using StaticArrays
-using BenchmarkTools
+
 """
     MonomialIndexer{N,MaxDeg,OffsetSize,BinomSize}
 
@@ -148,50 +148,53 @@ end
 end
 
 """
-    MonomialIndexer3D{MaxDeg,OffsetSize}
+    MonomialIndexer3D{MaxDeg,OffsetSize,TriangleSize}
 
 Specialized ultra-fast indexer for 3D case.
 """
-struct MonomialIndexer3D{MaxDeg,OffsetSize}
+struct MonomialIndexer3D{MaxDeg,OffsetSize,TriangleSize}
     degree_offsets::SVector{OffsetSize,Int}
+    triangle_numbers::SVector{TriangleSize,Int}  # Precomputed triangular numbers
 end
 
 function MonomialIndexer3D(::Val{MaxDeg}) where MaxDeg
     OffsetSize = MaxDeg + 1
+    TriangleSize = MaxDeg + 1
     
     offsets = zeros(Int, OffsetSize)
-    offsets[1] = 0
+    triangles = zeros(Int, TriangleSize)
     
+    offsets[1] = 0
     for d in 0:MaxDeg
-        # Number of monomials of degree d in 3 variables is (d+2 choose 2)
-        num_monomials = ((d+1)*(d+2)) >> 1  # Using bit shift for division by 2
+        triangles[d+1] = (d+1)*(d+2)÷2
         if d > 0
-            offsets[d+1] = offsets[d] + num_monomials
+            offsets[d+1] = offsets[d] + triangles[d]
         end
     end
     
-    MonomialIndexer3D{MaxDeg,OffsetSize}(SVector{OffsetSize}(offsets))
+    MonomialIndexer3D{MaxDeg,OffsetSize,TriangleSize}(
+        SVector{OffsetSize}(offsets),
+        SVector{TriangleSize}(triangles)
+    )
 end
 
 @inline function exp_to_position(indexer::MonomialIndexer3D{MaxDeg}, exp::SVector{3,Int}) where MaxDeg
-    a, b, c = exp[1], exp[2], exp[3]
-    deg = a + b + c
-    
-    # Handle zero monomial
+    deg = exp[1] + exp[2] + exp[3]
     deg == 0 && return 1
     
-    # Get offset for this degree
     @inbounds offset = indexer.degree_offsets[deg+1]
     
-    # Closed-form formula for position within degree:
-    # Count monomials with x-exponent > a: this is triangular number T(deg-a-1)
-    d_minus_a = deg - a
-    pos = (d_minus_a * (d_minus_a + 1)) >> 1
+    # Position within degree: count monomials with x exponent less than exp[1]
+    pos = 1
+    for i in 0:(exp[1]-1)
+        remaining = deg - i
+        @inbounds pos += indexer.triangle_numbers[remaining+1]
+    end
     
-    # Subtract monomials with x=a and y-exponent <= b (we want those after us)
-    pos -= b
+    # Then add position for given x exponent (which is exp[3] + 1)
+    pos += exp[3] + 1
     
-    return offset + pos + 1
+    return offset + pos
 end
 
 # Example usage and benchmarking
@@ -222,7 +225,8 @@ function demo()
     println("xy: ", exp_to_position(indexer2d, SVector(1,1)))  # 5
     println("y²: ", exp_to_position(indexer2d, SVector(0,2)))  # 6
     
-
+    # Benchmark (comment out if BenchmarkTools not installed)
+    
     exp = SVector(2, 0, 0)  # x⁵y³z²
     println("\nBenchmarking for x⁵y³z²:")
     @btime exp_to_position($indexer, $exp)
@@ -294,6 +298,5 @@ end
     
     return offset + position
 end
-
-# Run demo() to see it in action
 demo()
+# Run demo() to see it in action

@@ -2,10 +2,11 @@ using FastGaussQuadrature
 using Ju3VEM
 using Ju3VEM.VEMGeo: get_base_len, FaceIntegralData,resize_and_fill!
 using Ju3VEM.VEMGeo: get_iterative_area_vertex_ids!,get_edge,get_area,get_bc
-using Ju3VEM.VEMGeo: get_gauss_lobatto,get_normal
+using Ju3VEM.VEMGeo: get_gauss_lobatto,get_normal,get_exp_to_idx_dict
 using FixedSizeArrays,LinearAlgebra
 using StaticArrays,LoopVectorization
 using Octavian
+using Chairmarks
 
 abstract type ElType{K} end
 
@@ -257,17 +258,93 @@ include("volume_projector.jl")
 
 base   = get_base(BaseInfo{2,1,1}())
 
-facedata_col = Dict{Int,FaceData{3,1,length(base)}}()
-for face in RootIterator{3}(topo)
-    dΩ = precompute_face_monomials(face.id, topo, Val(1))
-    facedata_col[face.id] = h1_projectors!(face.id,mesh,dΩ)
+function create_facedata_col(mesh::Mesh{3,StandardEl{K}}) where K
+    base = get_base(BaseInfo{2,K,1}()).base
+    topo = mesh.topo
+    facedata_col = Dict{Int,FaceData{3,K,length(base)}}()
+    for face in RootIterator{3}(topo)
+        dΩ = precompute_face_monomials(face.id, topo, Val(K))
+        facedata_col[face.id] = h1_projectors!(face.id,mesh,dΩ)
+    end
+    return facedata_col
 end
 
-
-enm = create_node_mapping(1,mesh,facedata_col)
-# create_volume_bmat(1,mesh,SA[0.5,0.5,0.5],1.0,facedata_col,mesh.nodes)
-
-
+facedata_col = create_facedata_col(mesh)
+@b create_facedata_col($mesh)
+@b precompute_face_monomials(1, $topo, Val(1))
 
 
+dΩ = precompute_face_monomials(1, topo, Val(1))
+fd = h1_projectors!(1,mesh,dΩ)
 
+@b create_B_mat($mesh,$fd)
+@b create_D_mat($mesh,$fd)
+
+face  = get_areas(topo)[1]
+full_node_ids = FlattenVecs{3,Int}()
+@timev get_iterative_area_node_ids!(full_node_ids,face,mesh)
+
+
+@b h1_projectors!(1,$mesh,$dΩ)
+
+
+
+
+ntl = create_node_mapping(1,mesh,facedata_col)
+vol_id = 1
+using JET
+r = @report_opt  create_volume_bmat(vol_id,mesh,SA[0.5,0.5,0.5],1.0,facedata_col,ntl)
+
+
+@b create_node_mapping(1,$mesh,$facedata_col)
+
+
+
+@b create_volume_bmat(1,$mesh,SA[0.5,0.5,0.5],1.0,$facedata_col,$ntl)
+
+
+
+dΩ1 = facedata_col[1].dΩ 
+
+precompute_base_projection_coeffs(BaseInfo{3,1,1}(),dΩ1,SA[0.5,0.5,0.5])
+
+
+
+using DynamicSparseArrays 
+
+
+I = [3,100,300]; 
+V = [1,2,3]
+
+v = dynamicsparsevec(I,V);
+
+
+# v[100]
+
+# v[3] = 4
+# v[4] = 5
+
+@b DynamicSparseArrays.insert!($v.pma.array,4,5,nothing)
+idx = DynamicSparseArrays.find(v.pma.array,400)
+
+
+@b DynamicSparseArrays.find($v.pma.array,400)
+v.pma.array[3]
+
+
+print(v)
+
+
+
+# A = rand(4,5); 
+# B = rand(5,6); 
+
+# C1 = static_matmul(A,B,Val((4,6)))
+# C2 = A*B
+# C3 = static_matmul_turbo(A,B,Val((4,6)))
+
+# C1 ≈ C2 ≈ C3
+
+# @b static_matmul($A,$B,Val((4,6)))
+# @b static_matmul_turbo($A,$B,Val((4,6)))
+# @b $A*$B

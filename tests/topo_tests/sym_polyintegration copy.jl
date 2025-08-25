@@ -13,7 +13,7 @@ hf = max_node_distance(quad_nodes)
 # u, v, n, nus,p0 = get_plane_parameters(quad_nodes)
 plane = D2FaceParametrization(quad_nodes)
 
-p02d = SA[dot(p0,u),dot(p0,v)]
+
 
 a   = face2d_sym_integral(quad_nodes,0,0,SA[0.0,0.0],plane)
 bcu = face2d_sym_integral(quad_nodes,1,0,SA[0.0,0.0],plane)/a

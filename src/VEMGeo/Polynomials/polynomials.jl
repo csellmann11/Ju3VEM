@@ -26,40 +26,94 @@ end
 
 
 
-const EXP_TO_IDEX_DICT_D1 = Dict{SVector{1,Int},Int}()
-const EXP_TO_IDEX_DICT_D2 = Dict{SVector{2,Int},Int}()
-const EXP_TO_IDEX_DICT_D3 = Dict{SVector{3,Int},Int}()
+# const EXP_TO_IDEX_DICT_D1 = Dict{SVector{1,Int},Int}()
+# const EXP_TO_IDEX_DICT_D2 = Dict{SVector{2,Int},Int}()
+# const EXP_TO_IDEX_DICT_D3 = Dict{SVector{3,Int},Int}()
 
-const EXP_TO_IDEX_DICT_D1_BB = Dict{SVector{1,Int},Int}()
-const EXP_TO_IDEX_DICT_D2_BB = Dict{SVector{2,Int},Int}()
-const EXP_TO_IDEX_DICT_D3_BB = Dict{SVector{3,Int},Int}()
+# const EXP_TO_IDEX_DICT_D1_BB = Dict{SVector{1,Int},Int}()
+# const EXP_TO_IDEX_DICT_D2_BB = Dict{SVector{2,Int},Int}()
+# const EXP_TO_IDEX_DICT_D3_BB = Dict{SVector{3,Int},Int}()
 
-function get_exp_to_idx_dict(exp::SVector{N,Int},::Val{BB} = Val(false)) where {N,BB}
-    O = sum(exp)
-    exp_dict = if N == 1 && !BB
-        EXP_TO_IDEX_DICT_D1
-    elseif N == 1 && BB
-        EXP_TO_IDEX_DICT_D1_BB
-    elseif N == 2 && !BB
-        EXP_TO_IDEX_DICT_D2
-    elseif N == 3 && !BB
-        EXP_TO_IDEX_DICT_D3
-    elseif N == 3 && BB
-        EXP_TO_IDEX_DICT_D3_BB
-    else
-        throw(ErrorException("Only supported for N == 1, 2 or 3"))
-    end
+# function get_exp_to_idx_dict(exp::SVector{N,Int},::Val{BB} = Val(false)) where {N,BB}
+#     O = sum(exp)
+#     @assert O <= 10 "Only supported for O <= 10"
+#     exp_dict = if N == 1 && !BB
+#         EXP_TO_IDEX_DICT_D1
+#     elseif N == 1 && BB
+#         EXP_TO_IDEX_DICT_D1_BB
+#     elseif N == 2 && !BB
+#         EXP_TO_IDEX_DICT_D2
+#     elseif N == 3 && !BB
+#         EXP_TO_IDEX_DICT_D3
+#     elseif N == 3 && BB
+#         EXP_TO_IDEX_DICT_D3_BB
+#     else
+#         throw(ErrorException("Only supported for N == 1, 2 or 3"))
+#     end
 
-    get!(exp_dict,exp) do 
-        base = get_base(BaseInfo{N,O,1}(),Val(BB))
-        for (i,m) in enumerate(base.base)
-            if m.exp == exp 
-                return i
-            end
-        end
-        throw(ErrorException("Exponent $exp not found in base"))        
-    end
+#     get!(exp_dict,exp) do 
+#         base = get_base(BaseInfo{N,10,1}(),Val(BB))
+#         for (i,m) in enumerate(base.base)
+#             if m.exp == exp 
+#                 return i
+#             end
+#         end
+#         throw(ErrorException("Exponent $exp not found in base"))        
+#     end
+# end
+
+
+# Precompute binomials globally
+const MAXN = 5
+const MAXD = 20
+const BINOMS = [binomial(n, k) for n in 0:MAXN+MAXD, k in 0:MAXD]
+
+@inline function bchoose(n::Int, k::Int)
+    (n < 0 || k < 0 || k > n) && return 0
+    return BINOMS[n+1, k+1]
 end
+# prefix sums: number of monomials of degree ≤ d
+const BINOMSUMS = [sum(binomial(n + k - 1, k) for k in 0:d) for n in 1:MAXN, d in 0:MAXD]
+
+@inline function get_exp_to_idx_dict(_exp::SVector{N,Int},::Val{false} = Val(false)) where {N}
+    # @assert N <= MAXN "increase MAXN"
+    exp = reverse(_exp)             # keep same reversal convention as you used
+    d = sum(exp)
+    # @assert d <= MAXD "increase MAXD"
+
+    # count all monomials of strictly smaller total degree
+    idx = (d == 0) ? 0 : BINOMSUMS[N, d]  # BINOMSUMS[N,d] stores sum_{k=0}^{d-1} C(N+k-1,k)
+                                          # note: we stored BINOMSUMS with second index = d+1 -> adjusted below
+    # The above line uses BINOMSUMS[N, d] because we filled BINOMSUMS[N, d+1] = sum_{k=0}^d ...
+    # So BINOMSUMS[N, d] == sum_{k=0}^{d-1} ...
+    used = 0
+    @inbounds for i in 1:N
+        a = exp[i]
+        if a > 0
+            S = d - used
+            # closed form: sum_{t=0}^{a-1} C(N-i + S - t - 1, S - t)
+            # = C(N - i + S, S) - C(N - i + S - a, S - a)
+            n1 = N - i + S        # top for term1
+            k1 = S
+            n2 = N - i + S - a    # top for term2
+            k2 = S - a
+            # Map to BINOMS: C(n,k) == BINOMS[n+1, k+1]
+            term1 = BINOMS[n1 + 1, k1 + 1]
+            term2 = BINOMS[n2 + 1, k2 + 1]
+            idx += term1 - term2
+        end
+        used += a
+    end
+
+    return idx + 1
+end
+
+
+
+
+
+
+
 
 @generated function get_order(::Polynomial{T,D,L}) where {T,D,L}
     O = 0 

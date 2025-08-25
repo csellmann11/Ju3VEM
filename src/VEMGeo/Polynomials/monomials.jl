@@ -72,7 +72,12 @@ function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {
     idx = heads(idxs)[1]
     @boundscheck idx <= D  
     exp_val = exp[idx]
-    new_exp = setindex(exp, max(exp_val-1, 0), idx)
+    new_exp_val = exp_val-1
+    new_exp = if new_exp_val < 0
+        zero(SVector{D,Int})
+    else
+        setindex(exp, new_exp_val, idx)
+    end
     
     idxs_tail = tail(idxs)
     if length(idxs_tail) > 0

@@ -53,8 +53,8 @@ end
 Base.@propagate_inbounds Base.getindex(t::FlattenVecs, idx::Int) = t.v[idx]  
 Base.@propagate_inbounds Base.setindex!(t::FlattenVecs, val, idx::Int) = t.v[idx] = val
 
-Base.length(t::FlattenVecs) = length(t.v)
-Base.size(t::FlattenVecs)   = (length(t),)
+Base.length(t::FV) where FV<:FlattenVecs = length(t.v)
+Base.size(t::FV) where FV<:FlattenVecs = (length(t),)
 
 Base.eltype(::FlattenVecs{N,T})  where {N,T} = T
 

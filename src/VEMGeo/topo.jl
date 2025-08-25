@@ -479,7 +479,7 @@ end
 function iterate_volume_areas(fun::F1, 
     facedata_col::Dict{Int,FD}, 
     topo::Topology{D}, volume_id::Int, 
-    cond::F2=is_root) where {D,F1,F2,FD}
+    cond::F2=is_root) where {D,F1,F2,FD} 
 
     area_ids = get_volume_area_ids(topo, volume_id)
     areas = get_areas(topo)
@@ -513,19 +513,22 @@ function apply_f_on(f::F1, cond::F2,
     feature::T, features::AbstractVector{T},
     rev_child_order::Bool) where {T,F1<:Function,F2<:Function}
     if cond(feature) && is_active(feature)
-        return f(feature, rev_child_order)
+        f(feature, rev_child_order)
+        return nothing
     end
 
     # If this feature has no children, terminate traversal safely
-    if isempty(feature.childs)
-        return nothing
-    end
+    # if isempty(feature.childs)
+    #     return nothing
+    # end
 
     child_id1 = feature.childs[1+rev_child_order]
     apply_f_on(f, cond, features[child_id1], features, false)
 
     child_id2 = feature.childs[2-rev_child_order]
     apply_f_on(f, cond, features[child_id2], features, true)
+
+    nothing
 end
 
 apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =

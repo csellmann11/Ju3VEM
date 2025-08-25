@@ -1,154 +1,68 @@
-using OrderedCollections
-using Ju3VEM
-using Ju3VEM:FlattenVecs
-using Chairmarks
-using Random
+using StaticArrays
 
-@kwdef mutable struct ElementNodeMapping{DT<:AbstractDict}
-    const dict::DT            = OrderedDict{Int,Int}()
-    node_count          ::Int = 0
-    edge_node_count     ::Int = 0
-    face_moment_count   ::Int = 0
-    volume_moment_count ::Int = 0
-    isertion_finished   ::BitVector = falses(4)
+
+struct NodeID2LocalID 
+    map                  ::Dict{Int,Int16}
+    counter              ::MVector{4,Int16} 
 end
 
-function get_local_id(vnm::ElementNodeMapping) 
-    return  vnm.node_count          + 
-            vnm.edge_node_count     + 
-            vnm.face_moment_count   + 
-            vnm.volume_moment_count
-end
-function get_n_nodes(vnm::ElementNodeMapping) 
-    return get_local_id(vnm)
+function NodeID2LocalID(;sizehint::Int=100) 
+    map = Dict{Int,Int16}()
+    sizehint!(map,sizehint)
+    NodeID2LocalID(map,zero(MVector{4,Int16}))
 end
 
+@inline get_n_nodes(ntl::NodeID2LocalID) = length(ntl.map)
 
-# Generic function
-function add_local_id!(vnm::ElementNodeMapping, node_id::Int, ::Val{N}) where N
-    if haskey(vnm.dict, node_id) 
-        return vnm.dict[node_id]
+function add_field!(ntl::NodeID2LocalID,
+    key::Int,
+    ::Val{N}) where N
+
+    id = get!(ntl.map,key) do 
+        ntl.counter[N]   += 1
+        get_n_nodes(ntl) + 1
     end
-
-    N > 1 &&!vnm.isertion_finished[N-1] && error("Insertion not finished for previous type $(N-1)")
-    vnm.isertion_finished[N] == true    && error("Insertion already finished for type $N")
-
-    _increment_counter!(vnm, Val(N))
-    local_id = get_local_id(vnm)
-    vnm.dict[node_id] = local_id
-
-    return local_id
+    id
 end
 
-function get_local_id!(vnm::ElementNodeMapping, node_id::Int)
-    vnm.dict[node_id]
-end
+@inline add_vertex_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(1))
+@inline add_edge_vertex_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(2))
+@inline add_face_moment_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(3))
+@inline add_volume_moment_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(4))
 
-# Dispatch for incrementing the right counter
-_increment_counter!(vnm::ElementNodeMapping, ::Val{1}) = vnm.node_count += 1
-_increment_counter!(vnm::ElementNodeMapping, ::Val{2}) = vnm.edge_node_count += 1
-_increment_counter!(vnm::ElementNodeMapping, ::Val{3}) = vnm.face_moment_count += 1
-_increment_counter!(vnm::ElementNodeMapping, ::Val{4}) = vnm.volume_moment_count += 1
-
-# Convenience functions with original names
-add_node_id!(vnm::ElementNodeMapping, node_id::Int) = 
-    add_local_id!(vnm, node_id, Val(1))
-add_edge_node_id!(vnm::ElementNodeMapping, node_id::Int) = 
-    add_local_id!(vnm, node_id, Val(2))
-add_face_moment_id!(vnm::ElementNodeMapping, node_id::Int) = 
-    add_local_id!(vnm, node_id, Val(3))
-add_volume_moment_id!(vnm::ElementNodeMapping, node_id::Int) = 
-    add_local_id!(vnm, node_id, Val(4))
-
-
-@inline finish_insertion!(vnm::ElementNodeMapping, 
-            ::Val{N}) where N = vnm.isertion_finished[N] = true
-
-@inline finish_node_insertion!(vnm::ElementNodeMapping) = finish_insertion!(vnm, Val(1))
-@inline finish_edge_node_insertion!(vnm::ElementNodeMapping) = finish_insertion!(vnm, Val(2))
-@inline finish_face_moment_insertion!(vnm::ElementNodeMapping) = finish_insertion!(vnm, Val(3))
-@inline finish_volume_moment_insertion!(vnm::ElementNodeMapping) = finish_insertion!(vnm, Val(4))
-
-
-function get_node_ids_view(enm::ElementNodeMapping)
-    return view(enm.dict.keys,1:enm.node_count) 
-end
-
-function get_local_node_ids_view(enm::ElementNodeMapping)
-    return view(enm.dict.vals,1:enm.node_count) 
-end
-
-function get_edge_node_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + 1
-    end_idx = start_idx + enm.edge_node_count - 1
-    return view(enm.dict.keys,start_idx:end_idx)
-end
-
-function get_local_edge_node_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + 1
-    end_idx = start_idx + enm.edge_node_count - 1
-    return view(enm.dict.vals,start_idx:end_idx)
-end
-
-function get_face_moment_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + enm.edge_node_count + 1
-    end_idx = start_idx + enm.face_moment_count - 1
-    return view(enm.dict.keys,start_idx:end_idx)
-end
-
-function get_local_face_moment_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + enm.edge_node_count + 1
-    end_idx = start_idx + enm.face_moment_count - 1
-    return view(enm.dict.vals,start_idx:end_idx)
-end
-
-function get_volume_moment_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + enm.edge_node_count + enm.face_moment_count + 1
-    end_idx = start_idx + enm.volume_moment_count - 1
-    return view(enm.dict.keys,start_idx:end_idx)
-end
-
-function get_local_volume_moment_ids_view(enm::ElementNodeMapping)
-    start_idx = enm.node_count + enm.edge_node_count + enm.face_moment_count + 1
-    end_idx = start_idx + enm.volume_moment_count - 1
-    return view(enm.dict.vals,start_idx:end_idx)
-end
 
 
 function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
     facedata_col::Dict{Int,FaceData{D,K,L}}) where {K,D,L,ET<:ElType{K}}
 
     topo = mesh.topo 
-    enm = ElementNodeMapping() 
+    ntl = NodeID2LocalID(;sizehint = 30) 
     iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
         node_ids = face_data.face_node_ids
         for id in node_ids.v.args[1]
-            add_node_id!(enm,id)
+            add_vertex_id!(ntl,id)
         end
-        finish_node_insertion!(enm)
-
         K == 1 && return 
         for id in node_ids.v.args[2]
-            add_edge_node_id!(enm,id)
+            add_edge_vertex_id!(ntl,id)
         end
-        finish_edge_node_insertion!(enm)
-        for id in node_ids.v.args[3]
-            add_face_moment_id!(enm,id)
-        end
-        finish_face_moment_insertion!(enm)
 
+        for id in node_ids.v.args[3]
+            add_face_moment_id!(ntl,id)
+        end
+  
         D == 2 && return 
         for id in node_ids.v.args[4]
-            add_volume_moment_id!(enm,id)
+            add_volume_moment_id!(ntl,id)
         end
-        finish_volume_moment_insertion!(enm)
     end
-  
+    return ntl
 end
 
 
 
 
+@inline get_local_id(ntl::NodeID2LocalID,key::Int) = ntl.map[key]
 
 
 

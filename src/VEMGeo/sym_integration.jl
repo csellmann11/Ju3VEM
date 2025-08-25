@@ -272,46 +272,61 @@ end
 
 
 
-function compute_face_integral(m2d::Monomial{T,2},m3d::Monomial{T,3},
-    fd::FaceIntegralData{D,K,L},
-    offset::BT = nothing,
-    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L,BT<:Union{Nothing,SVector{3,T}}}
+function compute_face_integral(m2d::Monomial{T,2},
+    fd::FaceIntegralData{D,K,L},coeffs::SVector,
+    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L}
 
     # order = sum(m3d.exp) + sum(m2d.exp)
-    order3 = sum(m3d.exp); order2 = sum(m2d.exp)
-    len   = get_base_len(2,order3+order2,1)
+    order2 = sum(m2d.exp)
+    # len   = get_base_len(2,order3+order2,1)
 
     full_base = get_base(BaseInfo{2,K,1}()).base
 
-    plane = fd.plane 
+    # plane = fd.plane 
 
-    bc3d_face  = project_to_3d(fd.bc,plane)
+    # bc3d_face  = project_to_3d(fd.bc,plane)
 
-    offset_2d = if offset === nothing 
-        project_to_2d_abs(bc3d_face,plane)
-    else 
-        project_to_2d_abs(offset,plane)
+    # offset_2d = if offset === nothing 
+    #     project_to_2d_abs(bc3d_face,plane)
+    # else 
+    #     project_to_2d_abs(offset,plane)
+    # end
+
+    # flat_offset = project_to_3d_flat(offset_2d,plane)
+
+
+    # @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
+
+    # m3_idx = get_exp_to_idx_dict(m3d.exp)
+    # coeffs = coeff_list[m3_idx] 
+
+    ∫m = zero(T)
+    # @inbounds for (i,ci) in enumerate(coeffs)
+    for i in eachindex(coeffs)
+        ci = coeffs[i]
+        new_exp   = m2d.exp + full_base[i].exp 
+        new_coeff = m2d.val*ci 
+
+        idx = get_exp_to_idx_dict(new_exp)
+        ∫m += new_coeff*fd.integrals[idx]
     end
-
-    flat_offset = project_to_3d_flat(offset_2d,plane)
-
-
-    @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
-
-    ∫m = @no_escape begin 
-        coeffs = @alloc(Float64,len)
-        compute_transformation_coeffs3d_to_2d!(
-            coeffs,m3d, (bc3d_face-flat_offset),plane.u,plane.v)
+    ∫m/(hf^order2)
 
 
-        ∫m = zero(T)
-        @inbounds for (i,ci) in enumerate(coeffs)
-            new_exp   = m2d.exp + full_base[i].exp 
-            new_coeff = m2d.val * ci 
-            idx = get_exp_to_idx_dict(new_exp)
-            ∫m += new_coeff*fd.integrals[idx]
-        end
-        ∫m/(hv^order3*hf^order2)
-    end
+    # ∫m = @no_escape begin 
+    #     coeffs = @alloc(Float64,len)
+    #     compute_transformation_coeffs3d_to_2d!(
+    #         coeffs,m3d, (bc3d_face-flat_offset),plane.u,plane.v)
+
+
+    #     ∫m = zero(T)
+    #     @inbounds for (i,ci) in enumerate(coeffs)
+    #         new_exp   = m2d.exp + full_base[i].exp 
+    #         new_coeff = m2d.val * ci 
+    #         idx = get_exp_to_idx_dict(new_exp)
+    #         ∫m += new_coeff*fd.integrals[idx]
+    #     end
+    #     ∫m/(hv^order3*hf^order2)
+    # end
     return ∫m
 end

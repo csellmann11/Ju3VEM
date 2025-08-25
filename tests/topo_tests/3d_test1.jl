@@ -73,12 +73,6 @@ let topo = deepcopy(topo)
     end
 end
 
-# vols = [vol for vol in RootIterator{3,4}(topo)]
-# Threads.@threads for vol in vols
-#     if rand(0:1) |> Bool
-#         _refine!(vol,topo)
-#     end
-# end
 
 
 
