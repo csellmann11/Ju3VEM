@@ -58,7 +58,7 @@ function precompute_base_projection_coeffs(::BaseInfo{3,O},
     return SVector(coeff_list)
 end
 
-function get_coeff_sum(∇m::SVector{3,Monomial{Float64,3}}, 
+function get_dot_product_projection_coeffs(∇m::SVector{3,Monomial{Float64,3}}, 
     n::SVector{3,Float64},
     coeff_list::SVector{L,SVector{L,Float64}},hv) where {L} 
 
@@ -73,6 +73,33 @@ function get_coeff_sum(∇m::SVector{3,Monomial{Float64,3}},
 
     return coeffs
 end
+
+
+function compute_face_integral_m2d_time_3dcoeffs(m2d::Monomial{T,2},
+    fd::FaceIntegralData{D,K,L},coeffs::SVector,
+    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L}
+
+
+    order2 = sum(m2d.exp)
+
+    full_base = get_base(BaseInfo{2,K,1}()).base
+
+
+    ∫m = zero(T)
+    for i in eachindex(coeffs)
+        ci = coeffs[i]
+        new_exp   = m2d.exp + full_base[i].exp 
+        new_coeff = m2d.val*ci 
+
+        idx = get_exp_to_idx_dict(new_exp)
+        ∫m += new_coeff*fd.integrals[idx]
+    end
+    ∫m/(hf^order2)
+
+    return ∫m
+end
+
+
 
 function create_volume_bmat(volume_id::Int,
     mesh::Mesh{3,ET},
@@ -111,8 +138,10 @@ function create_volume_bmat(volume_id::Int,
             ∇m3d = ∇(m3d,hvol)
             integrated_vals .= 0.0
             for (j,m2d) in enumerate(base_2d)
-                ∇m3d_dot_n = get_coeff_sum(∇m3d,face_normal,coeff_list,hvol)
-                integrated_vals[j] += compute_face_integral(
+                ∇m3d_dot_n = get_dot_product_projection_coeffs(
+                    ∇m3d,face_normal,coeff_list,hvol)
+
+                integrated_vals[j] += compute_face_integral_m2d_time_3dcoeffs(
                     m2d,face_data.dΩ,∇m3d_dot_n,hf)
             end
 

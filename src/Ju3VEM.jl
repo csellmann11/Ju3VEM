@@ -86,7 +86,7 @@ module VEMGeo
         compute_transformation_coeffs2d_to_2d,
         # Sym integration
         precompute_face_monomials, compute_face_integral, compute_face_integral_unshifted,
-        get_area, get_bc
+        get_area, get_bc, FaceData
 end # module VEMGeo
 
 # Re-export the VEMGeo API from the top-level module

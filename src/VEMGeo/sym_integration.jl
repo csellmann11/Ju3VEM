@@ -117,6 +117,16 @@ end
 @inline get_bc(fd::FaceIntegralData)   = fd.bc
 
 
+struct FaceData{D,K,L,FV<:FlattenVecs{3,Int}}
+    face_node_ids::FV
+    dΩ           ::FaceIntegralData{D,K,L}
+    ΠsL2         ::FixedSizeMatrixDefault{Float64}
+end
+@inline Ju3VEM.VEMGeo.get_area(fd::FaceData) = get_area(fd.dΩ)
+@inline Ju3VEM.VEMGeo.get_bc(fd::FaceData)   = get_bc(fd.dΩ)
+@inline get_hf(fd::FaceData)   = fd.dΩ.hf
+
+
 function face2d_sym_integral(
     node_coords::AbstractVector{<:StaticVector{D,T}}, 
     e1::Int,e2::Int,bc::StaticVector{2,T},
@@ -272,61 +282,52 @@ end
 
 
 
-function compute_face_integral(m2d::Monomial{T,2},
-    fd::FaceIntegralData{D,K,L},coeffs::SVector,
-    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L}
-
-    # order = sum(m3d.exp) + sum(m2d.exp)
-    order2 = sum(m2d.exp)
-    # len   = get_base_len(2,order3+order2,1)
-
-    full_base = get_base(BaseInfo{2,K,1}()).base
-
-    # plane = fd.plane 
-
-    # bc3d_face  = project_to_3d(fd.bc,plane)
-
-    # offset_2d = if offset === nothing 
-    #     project_to_2d_abs(bc3d_face,plane)
-    # else 
-    #     project_to_2d_abs(offset,plane)
-    # end
-
-    # flat_offset = project_to_3d_flat(offset_2d,plane)
+# ================================================00
+# Volume integration 
 
 
-    # @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
 
-    # m3_idx = get_exp_to_idx_dict(m3d.exp)
-    # coeffs = coeff_list[m3_idx] 
+function precompute_volume_monomials(vol_id::Int,
+    topo::Topology,
+    facedata_col::Dict{Int,FaceData{3,K}}) where {K}
 
-    ∫m = zero(T)
-    # @inbounds for (i,ci) in enumerate(coeffs)
-    for i in eachindex(coeffs)
-        ci = coeffs[i]
-        new_exp   = m2d.exp + full_base[i].exp 
-        new_coeff = m2d.val*ci 
+    # vol integrals are need for the order 2*(K-1)
+    # to integrate this we need precomputed face integrals up to order 
+    # 2*(K-1)+1 = 2*K-1
 
-        idx = get_exp_to_idx_dict(new_exp)
-        ∫m += new_coeff*fd.integrals[idx]
+    K_max = 2*(K-1)
+
+    base = get_base(BaseInfo{3,K_max,1}()).base
+
+    L = length(base)
+    integrals = zero(MVector{L,Float64})
+
+    hvol = max_node_distance(topo.nodes,get_volume_node_ids(topo,vol_id))
+
+    geo_data = zero(MVector{4,Float64})
+    for i in 1:4
+        mi = base[i]
+        p = mi.exp[1]
+        m_face = Monomial(1/p+1,SA[p+1,mi.exp[2],mi.exp[3]])
+
+        iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
+            dΩ = facedata.dΩ 
+            geo_data[i] += compute_face_integral(m_face,dΩ,SA[0.0,0.0,0.0],1.0)
+        end
     end
-    ∫m/(hf^order2)
+    volume_measure = geo_data[1]
+    vol_bc         = SA[geo_data[2],geo_data[3],geo_data[4]]/volume_measure
 
+    for i in 5:length(base)
+        mi = base[i]
+        p = mi.exp[1]
+        m_face = Monomial(1/p+1,SA[p+1,mi.exp[2],mi.exp[3]])
+        
+        iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
+            dΩ = facedata.dΩ 
+            integrals[i] += compute_face_integral(m_face,dΩ,vol_bc,hvol)
+        end
+    end
 
-    # ∫m = @no_escape begin 
-    #     coeffs = @alloc(Float64,len)
-    #     compute_transformation_coeffs3d_to_2d!(
-    #         coeffs,m3d, (bc3d_face-flat_offset),plane.u,plane.v)
-
-
-    #     ∫m = zero(T)
-    #     @inbounds for (i,ci) in enumerate(coeffs)
-    #         new_exp   = m2d.exp + full_base[i].exp 
-    #         new_coeff = m2d.val * ci 
-    #         idx = get_exp_to_idx_dict(new_exp)
-    #         ∫m += new_coeff*fd.integrals[idx]
-    #     end
-    #     ∫m/(hv^order3*hf^order2)
-    # end
-    return ∫m
+    return SVector(integrals)
 end

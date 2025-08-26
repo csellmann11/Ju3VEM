@@ -99,17 +99,35 @@ end
 
 
 
-
-function max_node_distance(nodes::AbstractVector{V}) where {T<:Real,V <: AbstractVector{T}}
+function max_node_distance(nodes::AbstractVector{V},
+    ids::AbstractVector{Int}) where {T<:Real,V <: AbstractVector{T}}
     max_dist = zero(T)
-    n_nodes = length(nodes) 
+    n_nodes = length(ids) 
     @inbounds for i in 1:n_nodes-1, j in i+1:n_nodes
-        n1 = nodes[i]; n2 = nodes[j]
+        n1 = nodes[ids[i]]; n2 = nodes[ids[j]]
         dist = norm(n2-n1)
         max_dist = max(max_dist, dist)
     end
     return max_dist
 end
+
+
+
+function max_node_distance(nodes::AbstractVector{V}) where {T<:Real,V <: AbstractVector{T}}
+    # max_dist = zero(T)
+    # n_nodes = length(nodes) 
+    # @inbounds for i in 1:n_nodes-1, j in i+1:n_nodes
+    #     n1 = nodes[i]; n2 = nodes[j]
+    #     dist = norm(n2-n1)
+    #     max_dist = max(max_dist, dist)
+    # end
+    # return max_dist
+
+    return max_node_distance(nodes,1:length(nodes))
+end
+
+
+
 
 
 

@@ -1,16 +1,9 @@
 using Ju3VEM 
 
-using Ju3VEM.VEMGeo:FaceIntegralData
+using Ju3VEM.VEMGeo:FaceIntegralData, FaceData
 using Ju3VEM.VEMGeo: D2FaceParametrization, project_to_2d_abs, project_to_2d_rel, project_to_3d
 
-struct FaceData{D,K,L,FV<:FlattenVecs{3,Int}}
-    face_node_ids::FV
-    dΩ           ::FaceIntegralData{D,K,L}
-    ΠsL2         ::FixedSizeMatrixDefault{Float64}
-end
-@inline Ju3VEM.VEMGeo.get_area(fd::FaceData) = get_area(fd.dΩ)
-@inline Ju3VEM.VEMGeo.get_bc(fd::FaceData)   = get_bc(fd.dΩ)
-@inline get_hf(fd::FaceData)   = fd.dΩ.hf
+
 
 function create_B_mat(mesh::Mesh{D,ET},
     fd::FaceData) where {D,O,ET<:ElType{O}}

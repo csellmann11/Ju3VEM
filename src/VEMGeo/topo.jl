@@ -475,7 +475,22 @@ function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F
     end
 end
 
+"""
+    iterate_volume_areas(fun::F1, 
+        facedata_col::Dict{Int,FD}, 
+        topo::Topology{D}, volume_id::Int, 
+        cond::F2=is_root) where {D,F1,F2,FD} 
 
+Iterate over the areas of a volume and apply a function on the areas.
+
+# Arguments
+- `fun::Function`: The function to apply on the areas. fun takes 
+the `root_area`, `facedata` and `topo` as arguments
+- `facedata_col::Dict{Int,FD}`: The dictionary of face data.
+- `topo::Topology{D}`: The topology to get the areas from.
+- `volume_id::Int`: The id of the volume to iterate over.
+- `cond::Function`: The condition to check if the area should be applied.
+"""
 function iterate_volume_areas(fun::F1, 
     facedata_col::Dict{Int,FD}, 
     topo::Topology{D}, volume_id::Int, 
