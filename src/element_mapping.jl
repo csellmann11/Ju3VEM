@@ -1,3 +1,10 @@
+# Notes for refactoring: 
+# Dependencies: 
+# - FaceData
+# - Mesh
+
+
+
 using StaticArrays
 
 
@@ -31,9 +38,12 @@ end
 @inline add_volume_moment_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(4))
 
 
+@inline get_local_id(ntl::NodeID2LocalID,key::Int) = ntl.map[key]
+
+
 
 function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
-    facedata_col::Dict{Int,FaceData{D,K,L}}) where {K,D,L,ET<:ElType{K}}
+    facedata_col::Dict{Int,FaceData{D,L}}) where {D,L,K,ET<:ElType{K}}
 
     topo = mesh.topo 
     ntl = NodeID2LocalID(;sizehint = 30) 
@@ -60,9 +70,6 @@ function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
 end
 
 
-
-
-@inline get_local_id(ntl::NodeID2LocalID,key::Int) = ntl.map[key]
 
 
 

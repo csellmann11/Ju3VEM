@@ -97,7 +97,7 @@ end
 
 
 
-struct FaceIntegralData{D,K,L} 
+struct FaceIntegralData{D,L} 
     hf::Float64
     bc::SVector{2,Float64} 
     plane::D2FaceParametrization{D}
@@ -105,26 +105,50 @@ struct FaceIntegralData{D,K,L}
     integrals    ::SVector{L,Float64}
 end
 
-function FaceIntegralData{K}(hf::Float64,bc::SVector{2,Float64},
-    plane::D2FaceParametrization{D},integrals::SVector{L,Float64}) where {D,K,L}
+# function FaceIntegralData(hf::Float64,bc::SVector{2,Float64},
+#     plane::D2FaceParametrization{D},integrals::SVector{L,Float64}) where {D,L}
 
-    # face_node_ids = FlattenVecs{3,Int}()
-    # ΠsL2 = Float64[;;]
-    return FaceIntegralData{D,K,L}(hf,bc,plane,integrals)
-end
+
+#     return FaceIntegralData{D,L}(hf,bc,plane,integrals)
+# end
 
 @inline get_area(fd::FaceIntegralData) = fd.integrals[1]
 @inline get_bc(fd::FaceIntegralData)   = fd.bc
 
 
-struct FaceData{D,K,L,FV<:FlattenVecs{3,Int}}
+struct FaceData{D,L,FV<:FlattenVecs{3,Int}}
     face_node_ids::FV
-    dΩ           ::FaceIntegralData{D,K,L}
+    dΩ           ::FaceIntegralData{D,L}
     ΠsL2         ::FixedSizeMatrixDefault{Float64}
 end
-@inline Ju3VEM.VEMGeo.get_area(fd::FaceData) = get_area(fd.dΩ)
-@inline Ju3VEM.VEMGeo.get_bc(fd::FaceData)   = get_bc(fd.dΩ)
+@inline get_area(fd::FaceData) = get_area(fd.dΩ)
+@inline get_bc(fd::FaceData)   = get_bc(fd.dΩ)
 @inline get_hf(fd::FaceData)   = fd.dΩ.hf
+
+"""
+    get_outward_normal(bcvol,face_data::FaceData{3,L}) where {L}
+
+Returns the outward normal of the face w.r.t the volume center. 
+!!!WARNING!!! Only works reliable for convex volumes.
+"""
+function get_outward_normal(bcvol,face_data::FaceData{3,L}) where {L}
+    #TODO: move this function closer to geometric utils of the package
+    plane = face_data.dΩ.plane
+    normal = plane.n 
+
+    face_bc3d = project_to_3d(get_bc(face_data),plane)
+    face_to_vol_center = bcvol - face_bc3d 
+
+    if dot(face_to_vol_center,normal) < 0
+        return normal
+    else
+        return -normal
+    end
+end
+
+function get_outward_normal(bcvol,face_data::FaceData{2,K,L}) where {K,L}
+    return face_data.dΩ.plane.n
+end
 
 
 function face2d_sym_integral(
@@ -177,15 +201,14 @@ end
     Function precomputes the integrals of the monomials on a face up to the monomial order K
 """
 function precompute_face_monomials(
-    face_nodes::AbstractVector{<:StaticVector{D,T}},::Val{_K}) where {D,T,_K}
+    face_nodes::AbstractVector{<:StaticVector{D,T}},::Val{K_MAX}) where {D,T,K_MAX}
 
-    K    = max(_K,1)
+    K    = max(K_MAX,1)
     base = get_base(BaseInfo{2,K,1}()).base  
 
     hf           = max_node_distance(face_nodes)
-    # u,v,n,_,p0   = get_plane_parameters(face_nodes)
     plane = D2FaceParametrization(face_nodes)
-    # p02d         = SA[dot(p0,u),dot(p0,v)]
+
 
     L         = length(base)
     integrals = zero(MVector{L,T})
@@ -201,7 +224,7 @@ function precompute_face_monomials(
         integrals[i] = face2d_sym_integral(face_nodes,exp[1],exp[2],bc,plane)
     end
 
-    return FaceIntegralData{K}(hf,bc,plane,SVector(integrals))
+    return FaceIntegralData(hf,bc,plane,SVector(integrals))
 end
 
 function precompute_face_monomials(
@@ -213,9 +236,9 @@ function precompute_face_monomials(
 end
 
 function compute_face_integral(m::Monomial{T,3},
-    fd::FaceIntegralData{D,K,L},
+    fd::FaceIntegralData{D,L},
     offset::BT = nothing,
-    h::T = fd.hf) where {D,T,K,L,BT<:Union{Nothing,SVector{3,T}}}
+    h::T = fd.hf) where {D,T,L,BT<:Union{Nothing,SVector{3,T}}}
 
     order = sum(m.exp) 
     len   = get_base_len(2,order,1)
@@ -251,9 +274,9 @@ function compute_face_integral(m::Monomial{T,3},
 end
 
 
-function compute_face_integral(m::Monomial{T,2},fd::FaceIntegralData{D,K,L},
+function compute_face_integral(m::Monomial{T,2},fd::FaceIntegralData{D,L},
     offset2d::SVector{2,T} = fd.bc,
-    h::T = fd.hf) where {D,T,K,L}
+    h::T = fd.hf) where {D,T,L}
 
     order = sum(m.exp) 
     len   = get_base_len(2,order,1)
@@ -274,10 +297,10 @@ function compute_face_integral(m::Monomial{T,2},fd::FaceIntegralData{D,K,L},
 end
 
 function compute_face_integral_unshifted(m::Monomial{T,2},
-    fd::FaceIntegralData{D,K,L},h::T = 1.0) where {D,T,K,L}
+    fd::FaceIntegralData{D,L},h::T = fd.hf) where {D,T,L}
     idx   = get_exp_to_idx_dict(m.exp)
-
-    return fd.integrals[idx]/h^sum(m.exp)
+    order = sum(m.exp)
+    return fd.integrals[idx]/(h^order)
 end
 
 
@@ -285,38 +308,56 @@ end
 # ================================================00
 # Volume integration 
 
+struct VolumeIntegralData{L}
+    hvol::Float64
+    vol_bc::SVector{3,Float64}
+    integrals::SVector{L,Float64}
+end 
 
 
+"""
+    precompute_volume_monomials(vol_id::Int,topo::Topology,facedata_col::Dict{Int,<:FaceData{3}},::Val{K}) where {K}
+
+Precomputes the integrals of the monomials on a volume up to the monomial order K.
+
+
+# WARNING: currently requires the volume to be convex (_some_point_inside) must be actually inside the volume
+
+"""
 function precompute_volume_monomials(vol_id::Int,
     topo::Topology,
-    facedata_col::Dict{Int,FaceData{3,K}}) where {K}
+    facedata_col::Dict{Int,<:FaceData{3}},::Val{K_MAX}) where {K_MAX}
 
-    # vol integrals are need for the order 2*(K-1)
-    # to integrate this we need precomputed face integrals up to order 
-    # 2*(K-1)+1 = 2*K-1
 
-    K_max = 2*(K-1)
 
-    base = get_base(BaseInfo{3,K_max,1}()).base
+    base = get_base(BaseInfo{3,K_MAX,1}()).base
 
     L = length(base)
     integrals = zero(MVector{L,Float64})
 
     hvol = max_node_distance(topo.nodes,get_volume_node_ids(topo,vol_id))
 
+    _some_point_inside = mean(get_nodes(topo)[ni] for ni in get_volume_node_ids(topo,vol_id))
+
     geo_data = zero(MVector{4,Float64})
-    for i in 1:4
+    # the areea and th ebary cneter are computed without the offset 
+    # therefore they are in an extra loop
+    for i in 1:min(4,L)
         mi = base[i]
         p = mi.exp[1]
-        m_face = Monomial(1/p+1,SA[p+1,mi.exp[2],mi.exp[3]])
+        m_face = Monomial(1/(p+1),SA[p+1,mi.exp[2],mi.exp[3]])
 
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            geo_data[i] += compute_face_integral(m_face,dΩ,SA[0.0,0.0,0.0],1.0)
+            normal = get_outward_normal(_some_point_inside,facedata)
+            geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
         end
     end
+   
     volume_measure = geo_data[1]
     vol_bc         = SA[geo_data[2],geo_data[3],geo_data[4]]/volume_measure
+
+    integrals[1] = volume_measure
 
     for i in 5:length(base)
         mi = base[i]
@@ -329,5 +370,14 @@ function precompute_volume_monomials(vol_id::Int,
         end
     end
 
-    return SVector(integrals)
+    return VolumeIntegralData(hvol,vol_bc,SVector(integrals))
+end
+
+
+function compute_volume_integral_unshifted(m::Monomial{T,3},
+    vol_data::VolumeIntegralData{L},h::T = vol_data.hvol) where {T,L}
+
+    idx   = get_exp_to_idx_dict(m.exp)
+    order = sum(m.exp)
+    return vol_data.integrals[idx]/(h^order)
 end

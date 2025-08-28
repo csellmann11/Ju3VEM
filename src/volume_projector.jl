@@ -1,30 +1,9 @@
 using Ju3VEM
 using Ju3VEM.VEMGeo: project_to_3d_flat
 using Bumper
-"""
-    get_outward_normal(bcvol,face_data::FaceData{3,K,L}) where {K,L}
 
-Returns the outward normal of the face w.r.t the volume center. 
-!!!WARNING!!! Only works reliable for convex volumes.
-"""
-function get_outward_normal(bcvol,face_data::FaceData{3,K,L}) where {K,L}
-    #TODO: move this function closer to geometric utils of the package
-    plane = face_data.dΩ.plane
-    normal = plane.n 
 
-    face_bc3d = project_to_3d(get_bc(face_data),plane)
-    face_to_vol_center = bcvol - face_bc3d 
 
-    if dot(face_to_vol_center,normal) < 0
-        return normal
-    else
-        return -normal
-    end
-end
-
-function get_outward_normal(bcvol,face_data::FaceData{2,K,L}) where {K,L}
-    return face_data.dΩ.plane.n
-end
 
 
 function precompute_base_projection_coeffs(::BaseInfo{3,O},
@@ -76,13 +55,16 @@ end
 
 
 function compute_face_integral_m2d_time_3dcoeffs(m2d::Monomial{T,2},
-    fd::FaceIntegralData{D,K,L},coeffs::SVector,
-    hf::T = fd.hf,hv::T = 1.0) where {D,T,K,L}
+    fd::FaceIntegralData{D,L},coeffs::SVector,
+    hf::T = fd.hf) where {D,T,L}
+
+    # function computes ∫ m2d((x-bc_f)/hf) * coeffs_of(nx*dm3dx + ny*dm3dy + nz*dm3dz)
+    # the coeffs already contain the ∇m3d_dot_n and also the h scaling and the correct offset of the 
+    # volume bary center
 
 
     order2 = sum(m2d.exp)
-
-    full_base = get_base(BaseInfo{2,K,1}()).base
+    full_base = get_base(BaseInfo{2,6,1}()).base
 
 
     ∫m = zero(T)
@@ -104,7 +86,7 @@ end
 function create_volume_bmat(volume_id::Int,
     mesh::Mesh{3,ET},
     bcvol,hvol,
-    facedata_col::Dict{Int,FaceData{3,K,L}},
+    facedata_col::Dict{Int,FaceData{3,L}},
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
 
@@ -158,3 +140,13 @@ end
 
 
 
+function create_volume_dmat(volume_id::Int,
+    mesh::Mesh{3,ET},
+    bcvol,hvol,
+    facedata_col::Dict{Int,FaceData{3,L}},
+    volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
+
+
+    topo = mesh.topo
+
+end

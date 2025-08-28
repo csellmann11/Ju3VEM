@@ -136,63 +136,49 @@ function create_D_mat(mesh::Mesh{D,ET},
 end
 
 
-#TODO: finish this function
-function create_G_mat(mesh::Mesh{D,ET},
-    fd::FaceData) where {D,O,ET<:ElType{O}}
+# #TODO: finish this function
+# function create_G_mat(mesh::Mesh{D,ET},
+#     fd::FaceData) where {D,O,ET<:ElType{O}}
 
-    throw("not implemented")
+#     throw("not implemented")
 
-    dΩ = fd.dΩ
-    base = get_base(BaseInfo{2,O,1}())
-    area = get_area(fd)
-    center = get_bc(fd)
-    hf = get_hf(fd)
-
-
-    G_mat = MMatrix{length(base),length(base)}(undef)
-
-    for (i,mi) in enumerate(base)
-        i == 1 && continue
-        for (j,mj) in enumerate(base)
-            j == 1 && continue
-            G_mat[i,j] = compute_face_integral_unshifted(mi*mj,dΩ)/area
-        end
-    end
-
-    vertex_ids = fd.face_node_ids.v.args[1]
-    if O == 1 
-        for i in eachindex(vertex_ids)
-            vertex = mesh.nodes[vertex_ids[i]]
-            vertex_2d = project_to_2d_abs(vertex,dΩ.plane)
-            for (j,mj) in enumerate(base)
-                G_mat[1,j] += mj(vertex_2d,center,hf)/length(vertex_ids)
-            end
-        end
-    else 
+#     dΩ = fd.dΩ
+#     base = get_base(BaseInfo{2,O,1}())
+#     area = get_area(fd)
+#     center = get_bc(fd)
+#     hf = get_hf(fd)
 
 
-    end
+#     G_mat = MMatrix{length(base),length(base)}(undef)
 
-
-
-    return G_mat
-
-end
-# @inline function static_matmul(A::AbstractMatrix{T}, 
-#     B::AbstractMatrix{T}, ::Val{MN}) where {T,MN}
-#     M,N = MN
-#     @inbounds begin
-#         return SMatrix{M,N,T}(
-#             begin 
-#                 s = zero(T)
-#                 for k in axes(A,2)
-#                     s += A[i,k] * B[k,j]
-#                 end
-#                 s
-#             end
-#             for i in 1:M, j in 1:N)
+#     for (i,mi) in enumerate(base)
+#         i == 1 && continue
+#         for (j,mj) in enumerate(base)
+#             j == 1 && continue
+#             G_mat[i,j] = compute_face_integral_unshifted(mi*mj,dΩ)/area
+#         end
 #     end
+
+#     vertex_ids = fd.face_node_ids.v.args[1]
+#     if O == 1 
+#         for i in eachindex(vertex_ids)
+#             vertex = mesh.nodes[vertex_ids[i]]
+#             vertex_2d = project_to_2d_abs(vertex,dΩ.plane)
+#             for (j,mj) in enumerate(base)
+#                 G_mat[1,j] += mj(vertex_2d,center,hf)/length(vertex_ids)
+#             end
+#         end
+#     else 
+
+
+#     end
+
+
+
+#     return G_mat
+
 # end
+
 
 @inline function static_matmul(A::AbstractMatrix{T}, B::AbstractMatrix{T}, ::Val{MN}) where {T,MN}
     M, N = MN
@@ -224,7 +210,7 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
 
     face_data = FaceData(full_node_ids,dΩ,ΠsL2)
 
-
+ 
     D_mat  = create_D_mat(mesh,face_data)
     B_mat  = create_B_mat(mesh,face_data)
     
