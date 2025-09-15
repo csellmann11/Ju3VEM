@@ -40,7 +40,6 @@ using Ju3VEM
 # end
 
 
-reps = []
 @testset "3D Volume Integration (polyhedron via face triangles)" begin
     # Unit cube
     pts2 = [

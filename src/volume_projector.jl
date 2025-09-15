@@ -1,6 +1,4 @@
-using Ju3VEM
-using Ju3VEM.VEMGeo: project_to_3d_flat
-using Bumper
+using ..VEMGeo: project_to_3d_flat
 
 
 
@@ -19,18 +17,23 @@ function precompute_base_projection_coeffs(::BaseInfo{3,O},
     bc_vol2d   = project_to_2d_abs(bc_vol,plane)
     flat_bcvol = project_to_3d_flat(bc_vol2d,plane)
 
-    base = get_base(BaseInfo{3,O-1,1}()).base 
+    base = get_base(BaseInfo{3,O,1}()).base 
+    base2d = get_base(BaseInfo{2,O,1}()).base #INFO: added
 
-    coeff_list = MVector{length(base),SVector{length(base),Float64}}(undef)
+    # base2d = 
+
+    coeff_list = 
+            MVector{length(base),SVector{length(base2d),Float64}}(undef)
 
     @no_escape begin 
-        vec = @alloc(Float64,length(base))
+        vec = @alloc(Float64,length(base2d))
         for (i,m) in enumerate(base)
             vec .= 0.0 
             compute_transformation_coeffs3d_to_2d!(
-                vec,m,(bc3d_face-flat_bcvol),u,v,Val(O))
+                vec,m,(bc3d_face-flat_bcvol),u,v
+                )
 
-            coeff_list[i] = SVector{length(base),Float64}(vec)
+            coeff_list[i] = SVector{length(base2d),Float64}(vec)
         end
     end
 
@@ -39,7 +42,7 @@ end
 
 function get_dot_product_projection_coeffs(∇m::SVector{3,Monomial{Float64,3}}, 
     n::SVector{3,Float64},
-    coeff_list::SVector{L,SVector{L,Float64}},hv) where {L} 
+    coeff_list::SVector{L,<:SVector},hv) where {L} 
 
 
     coeffs = zero(eltype(coeff_list))
@@ -85,8 +88,8 @@ end
 
 function create_volume_bmat(volume_id::Int,
     mesh::Mesh{3,ET},
-    bcvol,hvol,
-    facedata_col::Dict{Int,FaceData{3,L}},
+    bcvol,hvol,abs_volume,
+    facedata_col::Dict{Int,<:FaceData{3,L}},
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
 
@@ -97,6 +100,9 @@ function create_volume_bmat(volume_id::Int,
 
 
     n_nodes = get_n_nodes(volume_node_mapping)
+    moment_idx_start_minus1 = sum(volume_node_mapping.counter[i] for i in 1:3)
+
+
     bmat = zeros(length(base_3d),n_nodes)
 
     if K == 1 
@@ -111,7 +117,7 @@ function create_volume_bmat(volume_id::Int,
 
         hf = face_data.dΩ.hf
 
-        coeff_list = precompute_base_projection_coeffs(BaseInfo{3,K,1}(),
+        coeff_list = precompute_base_projection_coeffs(BaseInfo{3,K-1,1}(),
                         face_data.dΩ,bcvol)
 
         integrated_vals = MVector{length(base_2d),Float64}(undef)
@@ -120,6 +126,8 @@ function create_volume_bmat(volume_id::Int,
             ∇m3d = ∇(m3d,hvol)
             integrated_vals .= 0.0
             for (j,m2d) in enumerate(base_2d)
+
+
                 ∇m3d_dot_n = get_dot_product_projection_coeffs(
                     ∇m3d,face_normal,coeff_list,hvol)
 
@@ -133,6 +141,17 @@ function create_volume_bmat(volume_id::Int,
                 col_id  = get_local_id(volume_node_mapping,face_node_ids[nc])
                 bmat[i,col_id] += val
             end
+
+            sum(m3d.exp) < 2 && continue
+
+            ## add treatment of moments
+            for d in 1:3 
+                ddm = ∂(m3d,hvol,d,d)
+                ddm.val == zero(ddm.val) && continue
+                # use the element look up at this point
+                i = findfirst(m -> ddm.exp == m.exp,base_3d)
+                bmat[i,moment_idx_start_minus1+i] -= ddm.val*abs_volume 
+            end
         end
     end
     return bmat
@@ -140,13 +159,197 @@ end
 
 
 
-function create_volume_dmat(volume_id::Int,
-    mesh::Mesh{3,ET},
-    bcvol,hvol,
-    facedata_col::Dict{Int,FaceData{3,L}},
-    volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
+function determine_node_type(id::Int,mesh::Mesh{3,ET})::Int where {ET}
 
+    n_vertices = get_vertices(mesh) |> length
+    id <= n_vertices && return 1
+ 
+    n_gauss_nodes = get_gauss_nodes(mesh) |> length 
+    id <= (n_vertices + n_gauss_nodes) && return 2 
+
+    n_face_moments = get_face_moments(mesh) |> length 
+    id <= (n_vertices + n_gauss_nodes + n_face_moments) && return 3
+
+    n_volume_moments = get_volume_moments(mesh) |> length 
+
+    id <= (n_vertices + n_gauss_nodes + n_face_moments + n_volume_moments) && return 4
+
+    # return value of 0 means that the passed id is not a valid node id
+    return 0
+
+end
+
+
+function _is_vertex_like_node(id::Int,mesh::Mesh)::Bool 
+    n_vertices = get_vertices(mesh) |> length
+    n_gauss_nodes = get_gauss_nodes(mesh) |> length 
+
+    id <= (n_vertices + n_gauss_nodes) && return true
+    
+    return false
+end
+
+function _handle_vertices_and_gauss_nodes!(
+    dmat::AbstractMatrix,
+    base3d,
+    mesh::Mesh,
+    node_id::Int,
+    local_pos::Integer,
+    bcvol::SVector{3,Float64},
+    hvol::Float64
+)
+
+    for (i,m) in enumerate(base3d)
+        x = (mesh[node_id] - bcvol)/hvol
+        dmat[local_pos,i] = m(x)
+    end
+    nothing
+end
+
+function _handle_face_moments!(
+    dmat::AbstractMatrix,
+    base3d,
+    mesh::Mesh{3,ET},
+    bc_vol::SVector{3,Float64},
+    facedata_col::Dict{Int,<:FaceData},
+    ntl,
+    vol_id
+) where {K,ET<:ElType{K}}
 
     topo = mesh.topo
 
+
+    mombase2d         = get_base(BaseInfo{2,K-2,1}())
+
+    length(mombase2d) == 0 && return nothing
+
+    iterate_volume_areas(facedata_col,topo,vol_id) do face, facedata, _
+
+        face_id = face.id
+        dΩ = facedata.dΩ 
+        hf = get_hf(facedata)
+        area = get_area(dΩ)
+        
+
+        face_moment_ids = mesh.int_coords_connect[3][face_id]
+
+        # gets for all 3d monomials the coeffs when expressed in 2d face basis
+        face_ceoffs = precompute_base_projection_coeffs(
+            BaseInfo{3,K,1}(),dΩ,bc_vol
+        )
+
+        # the dofs are now \int m3di * m2dj d \Omega for all m3di and m2dj
+        for i in eachindex(base3d.base)
+            coeffs3d = face_ceoffs[i]
+            for j in eachindex(face_moment_ids)
+                moment_id = face_moment_ids[j]
+                local_pos = get_local_id(ntl,moment_id)
+                mi = mombase2d[j]
+                int= compute_face_integral_m2d_time_3dcoeffs(
+                    mi,dΩ,coeffs3d,hf
+                )
+                dmat[local_pos,i] += int/area
+            end
+            
+        end
+    end
+
+    
+    nothing
 end
+
+function _handle_volume_moments!(
+    dmat::AbstractMatrix,
+    base3d,
+    mesh::Mesh{3,ET},
+    vol_id::Int,
+    ntl,
+    hvol::Float64,
+    vol_data::VolumeIntegralData,
+    abs_volume::Float64
+) where {K,ET<:ElType{K}}
+
+    mombase3d = get_base(BaseInfo{3,K-2,1}()).base
+    moment_ids = mesh.int_coords_connect[4][vol_id]
+
+
+    for (i,mi) in enumerate(base3d)
+        for (j,mj) in enumerate(mombase3d)
+        
+            moment_id = moment_ids[j]
+            local_pos = get_local_id(ntl,moment_id)
+            val = compute_volume_integral_unshifted(mj*mi,vol_data,hvol)
+
+
+            dmat[local_pos,i] += val/abs_volume
+        end
+        
+    end
+    nothing
+
+end
+
+function create_volume_dmat(volume_id::Int,
+    mesh::Mesh{3,ET},
+    bcvol,hvol,
+    facedata_col::Dict{Int,<:FaceData{3,L}},
+    vol_data::VolumeIntegralData,abs_volume::Float64,
+    volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
+
+ 
+    n_nodes = get_n_nodes(volume_node_mapping)
+    base3d  = get_base(BaseInfo{3,K,1}())
+
+    dmat    = 
+            FixedSizeArray{Float64}(undef,n_nodes,length(base3d))
+
+    # dmat .= 0.0
+
+    for (node_id,local_pos) in volume_node_mapping.map
+
+        !_is_vertex_like_node(node_id,mesh) && continue
+
+        _handle_vertices_and_gauss_nodes!(
+                dmat,base3d,mesh,node_id,local_pos,bcvol,hvol
+            )
+    end
+
+
+    _handle_face_moments!(
+        dmat,base3d,mesh,bcvol,facedata_col,volume_node_mapping,volume_id
+    )
+    _handle_volume_moments!(
+        dmat,base3d,mesh,volume_id,volume_node_mapping,hvol,vol_data,abs_volume
+    )
+
+    return dmat
+end
+
+
+function create_volume_vem_projectors(
+    volume_id::Int,
+    mesh::Mesh{3,ET},
+    vol_data::VolumeIntegralData,
+    facedata_col::Dict{Int,<:FaceData{3,L}},
+    volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
+
+    @assert K <= 2 "currently only implemented for K=1 and K=2"
+
+    hvol        = vol_data.hvol
+    abs_volume  = vol_data.integrals[1]
+    bcvol       = vol_data.vol_bc
+
+    base3d = get_base(BaseInfo{3,K,1}()).base
+    # volume_projectors
+    dmat = create_volume_dmat(volume_id,mesh,bcvol,hvol,facedata_col,vol_data,abs_volume,volume_node_mapping)
+
+    bmat = create_volume_bmat(volume_id,mesh,bcvol,hvol,abs_volume,facedata_col,volume_node_mapping)
+
+    gmat_inv = static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> inv
+
+    proj_s = gmat_inv* bmat
+    proj   = dmat * proj_s
+
+    return proj_s, proj
+end
+

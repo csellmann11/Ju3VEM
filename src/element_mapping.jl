@@ -1,11 +1,5 @@
-# Notes for refactoring: 
-# Dependencies: 
-# - FaceData
-# - Mesh
-
-
-
 using StaticArrays
+using ..VEMGeo: FaceData
 
 
 struct NodeID2LocalID 
@@ -41,12 +35,18 @@ end
 @inline get_local_id(ntl::NodeID2LocalID,key::Int) = ntl.map[key]
 
 
+# TODO: remove dependency on type FaceData
+function create_node_mapping!(
+    ntl::NodeID2LocalID,
+    volume_id::Int,mesh::Mesh{D,ET},
+    facedata_col::Dict{Int,<:FaceData{D,L}}) where {D,L,K,ET<:ElType{K}}
 
-function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
-    facedata_col::Dict{Int,FaceData{D,L}}) where {D,L,K,ET<:ElType{K}}
+
+    empty!(ntl.map)
+    ntl.counter .= 0
 
     topo = mesh.topo 
-    ntl = NodeID2LocalID(;sizehint = 30) 
+    
     iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
         node_ids = face_data.face_node_ids
         for id in node_ids.v.args[1]
@@ -60,17 +60,22 @@ function create_node_mapping(volume_id::Int,mesh::Mesh{D,ET},
         for id in node_ids.v.args[3]
             add_face_moment_id!(ntl,id)
         end
-  
-        D == 2 && return 
-        for id in node_ids.v.args[4]
-            add_volume_moment_id!(ntl,id)
-        end
+    end
+
+    for id in mesh.int_coords_connect[4][volume_id]
+        add_volume_moment_id!(ntl,id)
     end
     return ntl
 end
 
+function create_node_mapping(volume_id,mesh::Mesh,
+    facedata_col::Dict) 
 
+    ntl = NodeID2LocalID(;sizehint = 30) 
 
+    create_node_mapping!(ntl,volume_id,mesh,facedata_col)
+    return ntl
+end
 
 
 

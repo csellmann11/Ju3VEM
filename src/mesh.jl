@@ -1,12 +1,9 @@
-using FastGaussQuadrature
-using Ju3VEM
-using Ju3VEM.VEMGeo: get_base_len, FaceIntegralData,resize_and_fill!,get_outward_normal
-using Ju3VEM.VEMGeo: get_iterative_area_vertex_ids!,get_edge,get_area,get_bc,get_hf
-using Ju3VEM.VEMGeo: get_gauss_lobatto,get_normal,get_exp_to_idx_dict,precompute_volume_monomials
 using FixedSizeArrays,LinearAlgebra
 using StaticArrays,LoopVectorization
-using Octavian
-using Chairmarks
+using ..VEMGeo: get_base_len, FaceIntegralData, resize_and_fill!, get_outward_normal
+using ..VEMGeo: get_iterative_area_vertex_ids!, get_edge, get_area, get_bc, get_hf
+using ..VEMGeo: get_gauss_lobatto, get_normal, get_exp_to_idx_dict, precompute_volume_monomials
+using ..VEMGeo: interpolate_edge
 
 abstract type ElType{K} end
 
@@ -14,9 +11,7 @@ struct StandardEl{K} <: ElType{K} end
 struct SerendipityEl{K} <: ElType{K} end
 
 
-#TODO: remove this, already in VEMGeo
-const _GaussLobattoLookup = [gausslobatto(i) for i in 2:8]
-gauss_lobatto(i::Int) = _GaussLobattoLookup[i]
+# Use VEMGeo.get_gauss_lobatto
 
 @kwdef struct Mesh{D,ET}
     nodes::FlattenVecs{4,Node{D,Float64},Vector{Node{D,Float64}}}
@@ -52,6 +47,11 @@ function Mesh(topo::Topology{D}, ::ET) where {D,ET<:ElType}
 
     mesh
 end
+
+
+@inline get_order(::Mesh{D,ET}) where {D,K,ET<:ElType{K}} = K
+
+Base.@propagate_inbounds Base.getindex(mesh::Mesh,idx::Integer) = mesh.nodes[idx]
 
 
 get_vertices(mesh::Mesh) = mesh.nodes.v.args[1]
@@ -143,12 +143,14 @@ function add_internal_coords!(mesh::Mesh{D,ET},
     vertices = get_nodes(topo)
     num_mesh_nodes = length(get_vertices(mesh))
 
-    #INFO: For VEM and HHO, g_nodes are used for integration, therfore they cant be equally spaced
-    g_nodes = gauss_lobatto(K)[1][2:end-1]
+    #INFO: For VEM and HHO, g_nodes are used for integration, therefore they can't be equally spaced
+    # K is the polynomial order; use K+1 Lobatto nodes and drop endpoints → interior edge nodes
+    g_nodes = get_gauss_lobatto(K+1)[1][2:end-1]
 
-    edges = topo.connectivity[1, 2]
+    # edges = topo.connectivity[1, 2]
+    edge_nodes = get_edge_node_ids(topo)
     for edge in RootIterator{D,2}(topo)
-        c1, c2 = vertices[edges[edge.id]]
+        c1, c2 = vertices[edge_nodes[edge.id]]
         # edge_gauss_ids = int_coords_connect[2][edge.id]
 
         edge_gauss_ids = Vector{Int}(undef, length(g_nodes))
@@ -212,102 +214,101 @@ end
 
 
 
-###############################################################
-# Move the following to a test file
-###############################################################
+function add_mesh_nodes_unique(topo, 
+    nodes_added::Set{Int})
 
-topo = Topology{3}()
-
-# Base square corners
-base = [SA[0.0, 0.0, 0.0],
-        SA[1.0, 0.0, 0.0],
-        SA[1.0, 1.0, 0.0],
-        SA[0.0, 1.0, 0.0]]
-apex = SA[0.5, 0.5, 1.0]
-
-node_ids = Int[]
-append!(node_ids, add_node!.(base, Ref(topo)))
-push!(node_ids, add_node!(apex, topo))
-
-# Faces: base quad (ccw) and four triangular sides
-base_ids = node_ids[1:4]
-apex_id = node_ids[5]
-
-faces = [
-    base_ids,
-    [base_ids[1], base_ids[2], apex_id],
-    [base_ids[2], base_ids[3], apex_id],
-    [base_ids[3], base_ids[4], apex_id],
-    [base_ids[4], base_ids[1], apex_id]
-]
-
-add_volume!(faces, topo)
-
-
-
-
-mesh = Mesh(topo, StandardEl{1}())
-
-n_edges = length(get_edges(topo))
-
-get_vertices(mesh)
-get_gauss_nodes(mesh)
-get_face_moments(mesh)
-get_volume_moments(mesh)
-
-
-
-include("face_projector.jl")
-include("element_mapping.jl")
-include("volume_projector.jl")
-
-base   = get_base(BaseInfo{2,1,1}())
-
-function create_facedata_col(mesh::Mesh{3,StandardEl{K}}) where K
-
-    K_MAX = max(2*K-1,2)
-    base = get_base(BaseInfo{2,K_MAX,1}()).base
-    topo = mesh.topo
-    facedata_col = Dict{Int,FaceData{3,length(base)}}()
-    # volume integrals are needed up to order max(2*(K-1),1)
-    # -> since the divergence theorem is used we need the 
-    # face integrals up to order max(2*(K-1),1) + 1 = max(2*K-1,2)
-
-
-    for face in RootIterator{3}(topo)
-        dΩ = precompute_face_monomials(face.id, topo, Val(K_MAX))
-        facedata_col[face.id] = h1_projectors!(face.id,mesh,dΩ)
+    pot_id = length(topo.nodes) + 1
+    if pot_id ∉ nodes_added
+        push!(nodes_added, pot_id)
+        return pot_id
     end
-    return facedata_col
+    return -1
 end
 
-facedata_col = create_facedata_col(mesh)
 
-ntl = create_node_mapping(1,mesh,facedata_col)
-vol_id = 1
+"""
+    extrude_to_3d(nz::Int,mesh2d::Mesh{2,ET}) where ET
+
+Extrude a 2D mesh to 3D by adding `nz` layers of nodes in the z-direction. 
+The new nodes are added in the order of the edges of the 2D mesh.
+
+# Arguments
+- `nz::Int`: The number of layers to add.
+- `mesh2d::Mesh{2,ET}`: The 2D mesh to extrude.
+
+# Returns
+- `mesh3d::Mesh{3,ET}`: The 3D mesh.
+"""
+function extrude_to_3d(nz::Int,
+    mesh2d::Mesh{2,ET},
+    zmax::Float64=1.0) where ET
+
+    topo2d = mesh2d.topo
+    vertices = get_vertices(mesh2d)
+
+    topo3    = Topology{3}()
+
+    for vertex in vertices
+        z = 0.0 
+        add_node!(SA[vertex[1],vertex[2],z], topo3)
+    end
 
 
-vol_data = precompute_volume_monomials(1,topo,facedata_col,Val(1))
+    nodes_added = Dict{Int,Int}()
 
-Ju3VEM.VEMGeo.compute_volume_integral_unshifted(Monomial(1.0,SA[0,0,0]),vol_data)
-bmat3d = create_volume_bmat(vol_id,mesh,vol_data.vol_bc,vol_data.hvol,facedata_col,ntl)
+    for element in RootIterator{3}(topo2d)
 
-@b create_volume_bmat($vol_id,$mesh,$vol_data.vol_bc,$vol_data.hvol,$facedata_col,$ntl)
+        old_nodes = get_iterative_area_vertex_ids(element,topo2d)
+        new_nodes = Int[]
+        for i in 1:nz
+            first_node_id = get_area_node_ids(topo2d,element.id)[1]
+            face_ids = Vector{Int}[]
+            new_z = i * zmax / nz
 
+            local_counter = Ref(1)
+            iterate_element_edges(topo2d,element.id) do _, edge_id, _
+                # n1id,n2id = get_edge_node_ids(topo2d,edge_id)
+                idxp1 = get_next_idx(old_nodes,local_counter[])
+                n1id = old_nodes[local_counter[]]
+                n2id = old_nodes[idxp1]
+                
+                n1 = topo3.nodes[n1id]
+                n2 = topo3.nodes[n2id]
 
+                n4id = get!(nodes_added,n1id) do  
+                    new_coord1 = SA[n1[1],n1[2], new_z]
+                    n4id = add_node!(new_coord1, topo3)
+                    n4id
+                end
 
+                local_counter[] == 1 && push!(new_nodes, n4id)
 
+                
+                n3id = get!(nodes_added,n2id) do  
+                    new_coord2 = SA[n2[1],n2[2], new_z]
+                    n3id = add_node!(new_coord2, topo3)
+                    n3id
+                end
 
+                idxp1 != 1 && push!(new_nodes, n3id)
+                
+                push!(face_ids, SA[n1id,n2id,n3id,n4id])
+                local_counter[] += 1
+            end
 
-# A = rand(4,5); 
-# B = rand(5,6); 
+            
+            push!(face_ids,old_nodes)
+            push!(face_ids,new_nodes)
+            add_volume!(face_ids, topo3)
 
-# C1 = static_matmul(A,B,Val((4,6)))
-# C2 = A*B
-# C3 = static_matmul_turbo(A,B,Val((4,6)))
+            old_nodes .= new_nodes
+            empty!(new_nodes)
+        end
 
-# C1 ≈ C2 ≈ C3
+        
+        
+    end
 
-# @b static_matmul($A,$B,Val((4,6)))
-# @b static_matmul_turbo($A,$B,Val((4,6)))
-# @b $A*$B
+    mesh3d = Mesh(topo3, ET())
+    return mesh3d
+end

@@ -64,14 +64,14 @@ bc3d = project_to_3d(face_data.bc,face_data.plane)
 bc3d_plane = project_to_3d_flat(face_data.bc,face_data.plane)
 
 
-I = compute_face_integral(m3d,face_data)
+Int = compute_face_integral(m3d,face_data)
 
 b = @b compute_face_integral($m3d,$face_data)
 display(b)
 
 ref = 4*sqrt(2)/(9*hf^4)
 
-@test I ≈ ref
+@test Int ≈ ref
 
 
 
@@ -111,16 +111,16 @@ bc3d_plane  = project_to_3d_flat(face_data2.bc,face_data2.plane)
 
 m3d = Monomial(1.0,SA[0,1,1])
 
-I = compute_face_integral(m3d,face_data2,zero(bc3d),2.0)
+Int = compute_face_integral(m3d,face_data2,zero(bc3d),2.0)
 
 b = @b compute_face_integral($m3d,$face_data2,zero($bc3d),2.0)
 display(b)
 
 
 
-@test I ≈ 2.0
+@test Int ≈ 2.0
 
-quad_nodes3 = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,0.0], SA[0.0,1.0,0.0]] .* 2 .+ 2*Scalar(SA[1.0,1.0,0.0])
+quad_nodes3 = ([SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,0.0], SA[0.0,1.0,0.0]] .* 2 .+ 2*Scalar(SA[1.0,1.0,0.0])) |> reverse
 face_data3 = precompute_face_monomials(quad_nodes3,Val(1))
 b = @b precompute_face_monomials($quad_nodes3,Val(1))
 display(b)
@@ -130,14 +130,17 @@ display(b)
 m3d = Monomial(1.0,SA[0,1,0])
 m2d = Monomial(1.0,SA[0,1])
 
-I  = compute_face_integral(m3d,face_data3,zero(bc3d),2.0)
+Int  = compute_face_integral(m3d,face_data3,zero(bc3d),2.0)
 I2 = compute_face_integral(m2d,face_data3,zero(p02d),2.0)
 
+
+
 b = @b compute_face_integral($m2d,$face_data3,zero($p02d),2.0)
+# @code_warntype compute_face_integral(m2d,face_data3,zero(p02d),2.0)
 display(b)
 
-@test I  ≈ 6.0 
-@test I2 ≈ 6.0 
+@test Int  ≈ 6.0 
+@test I2 ≈ -6.0 # 2d integrals monomials are orientation sensitive, 3d not
 
 
 I3 = compute_face_integral(m2d,face_data3,face_data3.bc,2.0)
@@ -166,3 +169,40 @@ x3d2 = project_to_3d(x2d2,plane2)
 x3d_flat2 = project_to_3d_flat(x2d2,plane2)
 
 
+
+
+## I
+
+# quad_nodes4 = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,0.0], SA[0.0,1.0,0.0]] |> reverse
+
+dy = 1/16; dz = 1/16
+
+a1 = sqrt(dy^2+0.04^2)
+a2 = dz
+ref = a1*a2
+quad_nodes4 = [SA[0.0, 0.0, 0.0], SA[0.0, dy, 0.0], SA[0.04, dy, dz], SA[0.0, 0.0, dz]] #|> reverse
+# quad_nodes4 = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]] .* 2 .+ Scalar(SA[1.0,1.0,1.0])
+
+plane = D2FaceParametrization(quad_nodes4)
+plane.p0_2d
+
+face_data4 = precompute_face_monomials(quad_nodes4,Val(5))
+quad_nodes4_2d = project_to_2d_abs.(quad_nodes4,Ref(plane))
+
+
+quad_nodes4_recomp = project_to_3d.(quad_nodes4_2d,Ref(plane))
+
+
+m3d_const = Monomial(1.0,SA[0,0,0])
+
+Int = compute_face_integral(m3d_const,face_data4,zero(bc3d),1.0)
+
+
+
+
+# nodes = SVector{3, Float64}[
+#     [0.5, 0.03125, 0.0], [0.625, 0.03125, 0.0], 
+#     [0.625, 0.09375, 0.0], [0.5, 0.09375, 0.0], 
+#     [0.2578125, -0.0078125, 0.0546875], 
+#     [0.3046875, 0.0078125, 0.0703125], 
+#     [0.3046875, 0.0703125, 0.0703125], [0.2578125, 0.0546875, 0.0546875]]

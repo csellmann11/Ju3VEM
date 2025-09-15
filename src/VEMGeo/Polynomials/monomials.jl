@@ -70,7 +70,7 @@ import Base: heads,tail
 
 function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {T,D,S,N}
     idx = heads(idxs)[1]
-    @boundscheck idx <= D  
+    @boundscheck @assert idx <= D "index out of bounds"
     exp_val = exp[idx]
     new_exp_val = exp_val-1
     new_exp = if new_exp_val < 0

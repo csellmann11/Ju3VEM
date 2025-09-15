@@ -151,7 +151,7 @@ function _generate_polyprod_expr_matrix3d_to_2d(n::Int)
     return expr_mat
 end
 
-@generated function compute_transformation_coeffs2d_to_3d!(ˍ₋out::AbstractVector{T},
+@generated function compute_transformation_coeffs2d_to_2d!(ˍ₋out::AbstractVector{T},
     m::Monomial{T,2},
     bc::StaticVector{2},
     ::Val{N} = Val(3)) where {T,N}
@@ -181,7 +181,8 @@ function compute_transformation_coeffs2d_to_2d(
 end
 
 @generated function compute_transformation_coeffs3d_to_2d!(ˍ₋out::AbstractVector{T},
-    m::Monomial{T,3},p0::StaticVector,u::StaticVector,v::StaticVector,::Val{N} = Val(3)) where {T,N}
+    m::Monomial{T,3},p0::StaticVector,
+    u::StaticVector,v::StaticVector,::Val{N} = Val(5)) where {T,N}
 
     expr_mat = _generate_polyprod_expr_matrix3d_to_2d(N+1)
     cond_mat = _generate_condition_matrix(size(expr_mat)...)

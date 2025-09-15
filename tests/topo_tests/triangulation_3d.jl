@@ -3,7 +3,6 @@ using WriteVTK
 using OrderedCollections, Bumper
 using Statistics
 using SmallCollections, Chairmarks
-using JET
 using Ju3VEM
 
 ################################################################################
@@ -34,8 +33,7 @@ let
     # Triangulate in 3D
     tris = triangulate_planar_polygon3D(poly3)
 
-    b_res = @b triangulate_planar_polygon3D($poly3)
-    display(b_res)
+    # benchmark removed in tests
 
     # Check area sum and positivity
     area_true = polygon_area3D(poly3)
@@ -83,8 +81,7 @@ let
     vol_id = 1
 
     tets_local, l2g = tetrahedralize_volume(topoC, vol_id)
-    b_res = @b tetrahedralize_volume($topoC, $vol_id)
-    display(b_res)
+    # benchmark removed in tests
     pts = get_coords.(get_nodes(topoC)[l2g])
 
     # Check total volume and positivity

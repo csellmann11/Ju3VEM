@@ -1,7 +1,5 @@
-using Ju3VEM 
-
-using Ju3VEM.VEMGeo:FaceIntegralData, FaceData
-using Ju3VEM.VEMGeo: D2FaceParametrization, project_to_2d_abs, project_to_2d_rel, project_to_3d
+using ..VEMGeo: FaceIntegralData, FaceData
+using ..VEMGeo: D2FaceParametrization, project_to_2d_abs, project_to_2d_rel, project_to_3d
 
 
 
@@ -83,8 +81,8 @@ function create_B_mat(mesh::Mesh{D,ET},
         # moment integral
         if sum(m.exp) < 2 continue end
 
-        for d in 1:D
-            ddm = ∂(m,hf,d,d)
+        for d in 1:2
+            ddm = ∂(m,hf,d,d) 
             ddm.val == zero(ddm.val) && continue
             i = findfirst(m -> ddm.exp == m.exp,mom_base.base)
             B_mat[idx,num_nodes+i] -= ddm.val*area
@@ -115,9 +113,12 @@ function create_D_mat(mesh::Mesh{D,ET},
     num_vertices = length(vertex_ids)
     num_edge_vertices = length(edge_vertex_ids)
 
-    num_nodes = num_vertices + num_edge_vertices
+    num_vertives_total = num_vertices + num_edge_vertices
+
+    num_nodes = num_vertives_total + length(moment_ids)
     # D_mat = zeros(Float64,num_nodes,length(base))
-    D_mat = FixedSizeMatrix{Float64}(undef,num_nodes,length(base))
+    D_mat = 
+          FixedSizeMatrix{Float64}(undef,num_nodes,length(base))
  
 
     for (idx,m) in enumerate(base)
@@ -129,55 +130,14 @@ function create_D_mat(mesh::Mesh{D,ET},
         end
 
         for i in eachindex(moment_ids)
-            D_mat[num_nodes+i,idx] = compute_face_integral_unshifted(m*base[i],fd.dΩ)/area
+            D_mat[num_vertives_total+i,idx] = compute_face_integral_unshifted(m*base[i],fd.dΩ)/area
         end
     end
     return D_mat
 end
 
 
-# #TODO: finish this function
-# function create_G_mat(mesh::Mesh{D,ET},
-#     fd::FaceData) where {D,O,ET<:ElType{O}}
 
-#     throw("not implemented")
-
-#     dΩ = fd.dΩ
-#     base = get_base(BaseInfo{2,O,1}())
-#     area = get_area(fd)
-#     center = get_bc(fd)
-#     hf = get_hf(fd)
-
-
-#     G_mat = MMatrix{length(base),length(base)}(undef)
-
-#     for (i,mi) in enumerate(base)
-#         i == 1 && continue
-#         for (j,mj) in enumerate(base)
-#             j == 1 && continue
-#             G_mat[i,j] = compute_face_integral_unshifted(mi*mj,dΩ)/area
-#         end
-#     end
-
-#     vertex_ids = fd.face_node_ids.v.args[1]
-#     if O == 1 
-#         for i in eachindex(vertex_ids)
-#             vertex = mesh.nodes[vertex_ids[i]]
-#             vertex_2d = project_to_2d_abs(vertex,dΩ.plane)
-#             for (j,mj) in enumerate(base)
-#                 G_mat[1,j] += mj(vertex_2d,center,hf)/length(vertex_ids)
-#             end
-#         end
-#     else 
-
-
-#     end
-
-
-
-#     return G_mat
-
-# end
 
 
 @inline function static_matmul(A::AbstractMatrix{T}, B::AbstractMatrix{T}, ::Val{MN}) where {T,MN}
@@ -226,11 +186,7 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
 
     Octavian.matmul!(Π_star,invG_mat,B_mat)
 
-    if O > 2
-        H_mat = create_H_mat(cv,b)
-        C_mat = create_C_mat(cv,b,Π_star,H_mat) 
-        Octavian.matmul!(Π_star,inv(H_mat),C_mat)
-    end
+    # High-order stabilization hooks could be added here if needed
 
     return face_data
 end

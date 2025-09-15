@@ -554,3 +554,236 @@ apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =
 
 
 
+
+
+    # for edge in RootIterator{2}(topo)
+    #     id = edge.id 
+    #     node_ids = get_edge_node_ids(topo, id) 
+
+
+    #     any(nodes_seen[node_id] for node_id in node_ids) && continue
+    #     edge_nodes = get_nodes(topo)[node_ids] 
+
+    #     (constraint_fun(edge_nodes[1]) || constraint_fun(edge_nodes[2])) && continue
+
+    #     middle_node = 1/2*(edge_nodes[1] + edge_nodes[2])
+    #     offset = f(middle_node)
+
+    #     get_nodes(topo)[node_ids[1]] = Node(node_ids[1], edge_nodes[1] + offset)
+    #     get_nodes(topo)[node_ids[2]] = Node(node_ids[2], edge_nodes[2] + offset)
+
+    #     nodes_seen[node_ids] .= true
+    # end
+
+"""
+    transform_topology_planar!(topo::Topology{3}, distort_fun, is_boundary)
+
+Distort a structured hexahedral topology in-place while keeping all faces planar.
+
+Applies separable, axis-aligned shifts:
+    (x, y, z) -> (x + δx[x_layer], y + δy[y_layer], z + δz[z_layer])
+
+Each δ is constant per coordinate layer; boundary nodes remain unchanged.
+
+Arguments
+- `topo::Topology{3}`: 3D topology (e.g., Cartesian hex grid)
+- `distort_fun`: function called to produce an offset vector. Only components
+  aligned with the respective axis are used to fill δx, δy, δz. The function
+  is called with a single argument describing the layer: `(:x, xv)`, `(:y, yv)`,
+  or `(:z, zv)`; implementations can ignore it.
+- `is_boundary`: predicate `is_boundary(x)::Bool` to keep boundary nodes fixed.
+
+Planarity rationale
+- For an x-constant face, all nodes share the same `δx` (uniform translation),
+  while `δy` and `δz` vary only along in-plane directions y and z.
+- Analogous arguments hold for y- and z-constant faces.
+"""
+function transform_topology_planar!(
+    topo::Topology{3},
+    distort_fun::F1,
+    is_boundary::F2,
+) where {F1<:Function,F2<:Function}
+
+    nodes = get_nodes(topo)
+    n = length(nodes)
+    n == 0 && return topo
+
+    # Collect unique layer coordinates along each axis
+    xs = unique([nodes[i][1] for i in 1:n]); sort!(xs)
+    ys = unique([nodes[i][2] for i in 1:n]); sort!(ys)
+    zs = unique([nodes[i][3] for i in 1:n]); sort!(zs)
+
+    x_to_idx = Dict(x => i for (i, x) in enumerate(xs))
+    y_to_idx = Dict(y => i for (i, y) in enumerate(ys))
+    z_to_idx = Dict(z => i for (i, z) in enumerate(zs))
+
+    δx = zeros(Float64, length(xs))
+    δy = zeros(Float64, length(ys))
+    δz = zeros(Float64, length(zs))
+
+    # Fill axis-wise offsets from distort_fun; only use the aligned component
+    for (i, xv) in enumerate(xs)
+        off = distort_fun((:x, xv))
+        v = SVector{3,Float64}(off)
+        δx[i] = v[1]
+    end
+    for (j, yv) in enumerate(ys)
+        off = distort_fun((:y, yv))
+        v = SVector{3,Float64}(off)
+        δy[j] = v[2]
+    end
+    for (k, zv) in enumerate(zs)
+        off = distort_fun((:z, zv))
+        v = SVector{3,Float64}(off)
+        δz[k] = v[3]
+    end
+
+    # Apply to non-boundary nodes only
+    for i in 1:n
+        p = get_coords(nodes[i])
+        is_boundary(p) && continue
+        xi = x_to_idx[p[1]]
+        yi = y_to_idx[p[2]]
+        zi = z_to_idx[p[3]]
+        newp = SVector{3,Float64}(p[1] + δx[xi], p[2] + δy[yi], p[3] + δz[zi])
+        nodes[i] = Node(get_id(nodes[i]), newp)
+    end
+
+    return topo
+end
+
+"""
+    transform_topology_linear_elements!(topo::Topology{3}, make_A, is_boundary)
+
+Apply linear, per-element distortions while preserving face planarity and avoiding
+conflicting node updates. Elements that share any node with an already-selected
+one are skipped (node-disjoint selection). Elements that contain boundary nodes
+(per `is_boundary`) are also skipped.
+
+For each selected volume with node set V and barycenter c, the mapping is
+x -> x + A*(x - c), where A = `make_A(c, diameter, vol_id)`.
+
+- Faces remain planar because a linear map preserves planarity.
+- Node-disjoint selection prevents two different maps from touching the same node.
+- The diameter is computed as the maximum pairwise distance between nodes in V.
+
+Arguments
+- `topo::Topology{3}`: 3D topology to modify in-place
+- `make_A`: function `(center::SVector{3,Float64}, diameter::Float64, vol_id::Int) -> 3x3 matrix`
+- `is_boundary`: predicate `is_boundary(x)::Bool` identifying boundary nodes
+"""
+function transform_topology_linear_elements!(
+    topo::Topology{3},
+    make_A::F1,
+    is_boundary::F2,
+) where {F1<:Function,F2<:Function}
+
+    nodes = get_nodes(topo)
+    n_nodes = length(nodes)
+    n_nodes == 0 && return topo
+
+    vol_node_ids_vec = get_volume_node_ids(topo)
+    n_vols = length(vol_node_ids_vec)
+
+    # Precompute candidate volumes: skip any volume containing a boundary node
+    is_candidate = trues(n_vols)
+    for vid in 1:n_vols
+        for nid in vol_node_ids_vec[vid]
+            if is_boundary(get_coords(nodes[nid]))
+                is_candidate[vid] = false
+                break
+            end
+        end
+    end
+
+    # Build node adjacency via edges: neighbors[i] lists nodes sharing an edge with i
+    edge_nodes = get_edge_node_ids(topo)
+    neighbors = [Int[] for _ in 1:n_nodes]
+    for en in edge_nodes
+        a = en[1]; b = en[2]
+        push!(neighbors[a], b)
+        push!(neighbors[b], a)
+    end
+
+    # Select a subset with node and edge independence (no edge has both endpoints used)
+    used = falses(n_nodes)
+    selected = Int[]
+    for vid in 1:n_vols
+        is_candidate[vid] || continue
+        conflict = false
+        for nid in vol_node_ids_vec[vid]
+            if used[nid]
+                conflict = true
+                break
+            end
+            # Edge constraint: none of nid's neighbors are used
+            for m in neighbors[nid]
+                if used[m]
+                    conflict = true
+                    break
+                end
+            end
+            conflict && break
+        end
+        if !conflict
+            push!(selected, vid)
+            for nid in vol_node_ids_vec[vid]
+                used[nid] = true
+            end
+        end
+    end
+
+    # Helper to compute barycenter and diameter for a volume's nodes
+    function _center_and_diameter(node_ids::AbstractVector{Int})
+        c = zero(SVector{3,Float64})
+        for nid in node_ids
+            c += get_coords(nodes[nid])
+        end
+        c /= length(node_ids)
+        maxd2 = 0.0
+        for i in 1:length(node_ids)
+            pi = get_coords(nodes[node_ids[i]])
+            for j in i+1:length(node_ids)
+                pj = get_coords(nodes[node_ids[j]])
+                d2 = sum(abs2, pi - pj)
+                if d2 > maxd2
+                    maxd2 = d2
+                end
+            end
+        end
+        return c, sqrt(maxd2)
+    end
+
+    # Apply linear map per selected volume
+    for vid in selected
+        node_ids = vol_node_ids_vec[vid]
+        c, diam = _center_and_diameter(node_ids)
+        A = make_A(c, diam, vid)
+        @assert size(A) == (3,3) "make_A must return a 3x3 matrix"
+        for nid in node_ids
+            p = get_coords(nodes[nid])
+            # Safety: boundary nodes should not be present, but double-check
+            is_boundary(p) && continue
+            newp = p + A*(p - c)
+            nodes[nid] = Node(nid, newp)
+        end
+    end
+
+    return topo
+end
+
+"""
+    transform_topology_linear_elements!(topo::Topology{3}, is_boundary; fraction=1/8)
+
+Default variant that uses an isotropic scaling A = s*I per selected element so
+that farthest nodes move by approximately `fraction*diameter` (for cubes, s=2*fraction).
+"""
+function transform_topology_linear_elements!(
+    topo::Topology{3},
+    is_boundary::F2;
+    fraction::Float64 = 1/8,
+) where {F2<:Function}
+    s = 2*fraction
+    make_A = (_c, _diam, _vid) -> SMatrix{3,3,Float64}(I) * s
+    return transform_topology_linear_elements!(topo, make_A, is_boundary)
+end
