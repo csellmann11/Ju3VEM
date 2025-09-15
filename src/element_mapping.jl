@@ -47,7 +47,7 @@ function create_node_mapping!(
 
     topo = mesh.topo 
     
-    iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
+    iterate_volume_areas(facedata_col,topo,volume_id) do face, face_data, _
         node_ids = face_data.face_node_ids
         for id in node_ids.v.args[1]
             add_vertex_id!(ntl,id)

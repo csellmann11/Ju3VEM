@@ -33,14 +33,14 @@ end
 
 
  
-function get_unique_values(v::AbstractVector{<:AbstractVector{Int}},
-    ids::AbstractVector{Int})
+function get_unique_values(v::V,
+    ids::AbstractVector{Int}) where {V}
 
-    @assert maximum(ids) <= length(v) "ids are out of bounds"
+    @assert maximum(ids) <= maximum(keys(v)) "ids are out of bounds"
     max_len = sum(length,v[i] for i in ids)
     pointer = 0
     _unique_values = ID_VEC_TYPE{Int}(undef, max_len)
-    @inbounds for id in ids
+    for id in ids
         values = v[id]
         for value in values
             if value ∉ @view(_unique_values[1:pointer])

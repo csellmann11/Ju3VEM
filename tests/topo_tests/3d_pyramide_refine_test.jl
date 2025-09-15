@@ -32,8 +32,8 @@ faces = [
 
 add_volume!(faces, topo)
  
-topo.volumes.keys
-get_volume_area_ids(topo,1)
+
+
 # Refine the pyramid volume 
 
 
@@ -41,17 +41,16 @@ vol = get_volumes(topo)[1]
 _refine!(vol, topo)
 
 vol = get_volumes(topo)[end]
-# r =@report_opt _refine!(vol, topo)
+_coarsen!(vol,topo)
+_coarsen!(vol,topo)
+# _coarsen!(get_volumes(topo)[5],topo)
 
-_coarsen!(get_volumes(topo)[end],topo)
-_coarsen!(get_volumes(topo)[5],topo)
-
-vol = get_volumes(topo)[1]
-_refine!(vol, topo)
-
+# vol = get_volumes(topo)[1]
+# _refine!(vol, topo)
 
 
-geometry_to_vtk(topo, "3d_pyramide_refine_test")
+
+geometry_to_vtk(topo, "vtk/3d_pyramide_refine_test")
 
 # Also test tetrahedralization of the last volume if possible
 try

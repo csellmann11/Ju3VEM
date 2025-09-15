@@ -51,14 +51,21 @@ function activate!(mf::MF) where MF <: Union{<:NManifold,<:Node}
     return mf
 end
 
-function deactivate!(mf::Union{<:NManifold,<:Node})
+function deactivate!(mf::Node)
     mf.id = -abs(mf.id)
+    return mf
+end
+
+function deactivate!(mf::NManifold)
+    mf.id = -abs(mf.id)
+    # mf.is_root = false
     return mf
 end
 
 get_id(mf::NManifold) = mf.id
 is_active(m::Union{Node,NManifold}) = m.id > 0
 
+# is_active_root(mf::NManifold) = is_root(mf) && is_active(mf)
 
 #########################
 # Topology
@@ -368,7 +375,7 @@ function RootIterator{Idx}(topo::Topology{D}) where {D,Idx}
 end
 
 function RootIterator{D,Idx}(topo::Topology{D}) where {D,Idx}
-    state_is_root::BitVector = is_root.(get_geo_vec(topo, Val(Idx)))
+    state_is_root::BitVector = is_active_root.(get_geo_vec(topo, Val(Idx)))
     return RootIterator{D,Idx}(topo, state_is_root)
 end
 
@@ -468,7 +475,7 @@ function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F
         apply_f_on(cond, edge, edges, n2 < n1) do root_edge, rev_child_order
             # idx = rev_child_order ? 1 : 2
             idx = 1 + rev_child_order
-            edge_id = root_edge.id
+            edge_id = root_edge.id 
             node_id = nodes_of_edges[edge_id][idx]
             fun(node_id, edge_id, parent_edge_id)
         end
@@ -500,7 +507,7 @@ function iterate_volume_areas(fun::F1,
     areas = get_areas(topo)
     for area_id in area_ids
         area = areas[area_id]
-        apply_f_on(cond, area, areas, false) do root_area, _
+        apply_f_on_unordered(cond, area, areas) do root_area
             fun(root_area, facedata_col[root_area.id], topo)
         end
     end
@@ -536,6 +543,10 @@ function apply_f_on(f::F1, cond::F2,
     # if isempty(feature.childs)
     #     return nothing
     # end
+    # transform_fun = ifelse(rev_child_order,reverse,identity)
+    # for child_id in transform_fun(feature.childs)
+    #     apply_f_on(f, cond, features[child_id], features, false)
+    # end
 
     child_id1 = feature.childs[1+rev_child_order]
     apply_f_on(f, cond, features[child_id1], features, false)
@@ -550,30 +561,24 @@ apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =
     apply_f_on(f, is_root, feature, features, rev_child_order)
 
 
+function apply_f_on_unordered(f::F1, 
+    cond::F2, 
+    feature, 
+    features) where {F1<:Function,F2<:Function}
 
+    if cond(feature) && is_active(feature)
+        f(feature)
+        return nothing
+    end
+    
+    for child_id in feature.childs
+        apply_f_on_unordered(f, cond, features[child_id], features)
+    end
+    nothing
+end
 
-
-
-
-
-    # for edge in RootIterator{2}(topo)
-    #     id = edge.id 
-    #     node_ids = get_edge_node_ids(topo, id) 
-
-
-    #     any(nodes_seen[node_id] for node_id in node_ids) && continue
-    #     edge_nodes = get_nodes(topo)[node_ids] 
-
-    #     (constraint_fun(edge_nodes[1]) || constraint_fun(edge_nodes[2])) && continue
-
-    #     middle_node = 1/2*(edge_nodes[1] + edge_nodes[2])
-    #     offset = f(middle_node)
-
-    #     get_nodes(topo)[node_ids[1]] = Node(node_ids[1], edge_nodes[1] + offset)
-    #     get_nodes(topo)[node_ids[2]] = Node(node_ids[2], edge_nodes[2] + offset)
-
-    #     nodes_seen[node_ids] .= true
-    # end
+apply_f_on_unordered_roots(f, feature, features) =
+    apply_f_on_unordered(f, is_root, feature, features)
 
 """
     transform_topology_planar!(topo::Topology{3}, distort_fun, is_boundary)

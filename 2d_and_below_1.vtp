@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian" header_type="UInt64" compressor="vtkZLibDataCompressor">
+  <PolyData>
+    <Piece NumberOfPoints="5" NumberOfPolys="8">
+      <Points>
+        <DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAAAAAAB4AAAAAAAAAHgAAAAAAAAAGQAAAAAAAAA=eJxjYMAHPtjjFyckDwMP7FHpD/YARhgIKg==
+</DataArray>
+      </Points>
+      <Polys>
+        <DataArray type="Int64" Name="connectivity" NumberOfComponents="1" format="binary">
+AQAAAAAAAADAAAAAAAAAAMAAAAAAAAAAKwAAAAAAAAA=eJxjYIAARijNxIAKWNDkGdHE0dUzocmjm4NLPTOaOIyPro8FTR4AEMgAMQ==
+</DataArray>
+        <DataArray type="Int64" Name="offsets" NumberOfComponents="1" format="binary">
+AQAAAAAAAABAAAAAAAAAAEAAAAAAAAAAHgAAAAAAAAA=eJxjZoAANijNCaV5oDQ/lBaC0qJQWgJKAwALgABt
+</DataArray>
+      </Polys>
+      <CellData>
+        <DataArray type="Int64" Name="area_id" NumberOfComponents="1" format="binary">
+AQAAAAAAAABAAAAAAAAAAEAAAAAAAAAAHgAAAAAAAAA=eJxjZIAAJijNDKVZoDQrlGaD0uxQmgNKAwAEAAAl
+</DataArray>
+      </CellData>
+    </Piece>
+  </PolyData>
+</VTKFile>

@@ -78,13 +78,20 @@ function deactivate_submanifolds_touching_center!(parent::Area{D}, topo::Topolog
     return nothing
 end
 
-function deactivate_submanifolds_touching_center!(parent::Volume{D}, topo::Topology{D}, mid_node_id::Int) where D
+function deactivate_submanifolds_touching_center!(
+    parent::Volume{D}, 
+    topo::Topology{D}, 
+    mid_node_id::Int) where D
+
     for child_id in parent.childs
         for face_id in get_volume_area_ids(topo, child_id)
             if mid_node_id in get_area_node_ids(topo, face_id)
                 downstream_deactivate!(get_areas(topo)[face_id], topo)
                 for edge_id in get_area_edge_ids(topo, face_id)
-                    downstream_deactivate!(get_edges(topo)[edge_id], topo)
+                    n1id, n2id = get_edge_node_ids(topo, edge_id) 
+                    if n1id == mid_node_id || n2id == mid_node_id
+                        downstream_deactivate!(get_edges(topo)[edge_id], topo)
+                    end
                 end
             end
         end

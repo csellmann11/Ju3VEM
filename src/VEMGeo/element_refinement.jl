@@ -77,6 +77,7 @@ function _refine!(area::Area{D},topo::Topology{D}) where D
     end
     
     was_once_refined = !isempty(area.childs)
+    # @show area.childs
     if !was_once_refined #standard case
         mid_node_coords = mean(get_nodes(topo)[n_id] for n_id in area_nodes)
         new_node_id     = add_node!(mid_node_coords,topo)
@@ -132,10 +133,13 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
 
     for area_id in get_volume_area_ids(topo,volume_id)
         area = get_areas(topo)[area_id]
+        
         face_to_center[area_id] = _refine!(area,topo) 
     end
+
     
     was_once_refined = !isempty(volume.childs)
+   
     if !was_once_refined
         # new_node_coords = mean(get_nodes(topo)[volume_nodes])
         new_node_coords = mean(get_nodes(topo)[n_id] for n_id in volume_nodes)

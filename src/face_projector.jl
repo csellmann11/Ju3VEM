@@ -157,6 +157,10 @@ end
 function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
                        dΩ::FaceIntegralData) where {D,O,ET<:ElType{O}}
 
+    @assert face_id > 0 "face_id is not positive"
+    face = get_areas(mesh.topo)[face_id]
+    
+
     topo = mesh.topo
     base   = get_base(BaseInfo{2,O,1}())
 

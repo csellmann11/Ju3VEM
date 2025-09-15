@@ -110,6 +110,7 @@ module VEMUtils
     using Octavian
     using Bumper
     using SparseArrays
+    using WriteVTK
 
     include("mesh.jl")
     include("face_projector.jl")

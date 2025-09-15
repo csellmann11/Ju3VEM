@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian">
+  <vtkMultiBlockDataSet>
+    <DataSet index="0" file="pyramid_tets_1.vtu"/>
+    <Block index="1" name="pyramid_tets_2d_and_below">
+      <DataSet index="0" file="pyramid_tets_2d_and_below_1.vtp" name="pyramid_tets_2d_and_below_1"/>
+      <Block index="1" name="pyramid_tets_edges">
+        <DataSet index="0" file="pyramid_tets_edges_1.vtp" name="pyramid_tets_edges_1"/>
+      </Block>
+    </Block>
+  </vtkMultiBlockDataSet>
+</VTKFile>

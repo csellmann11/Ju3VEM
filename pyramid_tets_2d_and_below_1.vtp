@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian" header_type="UInt64" compressor="vtkZLibDataCompressor">
+  <PolyData>
+    <Piece NumberOfPoints="10" NumberOfPolys="44">
+      <Points>
+        <DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAAAAAADwAAAAAAAAAPAAAAAAAAAARAAAAAAAAAA=eJxjYACBB/YMKPQHKH0BjUaoCwWDo1D6KlT8BYb61atA4BWaPnT1LzDMh+lDVX8BQz3MHdjNR5g3ayYInLQHANn8OLM=
+</DataArray>
+      </Points>
+      <Polys>
+        <DataArray type="Int64" Name="connectivity" NumberOfComponents="1" format="binary">
+AQAAAAAAAAAgBAAAAAAAACAEAAAAAAAAhwAAAAAAAAA=eJyF0jkOAzEMQ1F54mVy/wunSFTkAcS4MfipzYKrvmf87ln/58IfcOMnvnVS/Ave+uJunuoM+Ar+xC/8hfZdzXfwJ757a+6czm+fQpu38OVpD8Zb332ledL8B9469T2Bu//WN7y1eTvEP82T6pt38O2b/skb3tq8HeKf3pvqm3fjfwAyLQHz
+</DataArray>
+        <DataArray type="Int64" Name="offsets" NumberOfComponents="1" format="binary">
+AQAAAAAAAABgAQAAAAAAAGABAAAAAAAAZAAAAAAAAAA=eJwtxdEGwgAAAMCIGCMixoiIESMiIkaMESNGxIgxIkZEjBF9eA/dvdx49Ddx4NBTzzx35NgLL71y4rVTb7z1znsfnPno3IVPLn125Yuvrn1z49Z3P9z56Zff7j34469/kMsLmw==
+</DataArray>
+      </Polys>
+      <CellData>
+        <DataArray type="Int64" Name="area_id" NumberOfComponents="1" format="binary">
+AQAAAAAAAABgAQAAAAAAAGABAAAAAAAAVQAAAAAAAAA=eJwtxUkCgQAAAEAUCsmWkkgRiv+/z8HMZcajv4kDh5565rkjx1546ZUTr51646133vvgzEfnLnxy6bMrX3x17Zsbt7774c5Pv/x278Eff/0D288D3w==
+</DataArray>
+      </CellData>
+    </Piece>
+  </PolyData>
+</VTKFile>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian" header_type="UInt64" compressor="vtkZLibDataCompressor">
+  <PolyData>
+    <Piece NumberOfPoints="10" NumberOfLines="28">
+      <Points>
+        <DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAAAAAADwAAAAAAAAAPAAAAAAAAAARAAAAAAAAAA=eJxjYACBB/YMKPQHKH0BjUaoCwWDo1D6KlT8BYb61atA4BWaPnT1LzDMh+lDVX8BQz3MHdjNR5g3ayYInLQHANn8OLM=
+</DataArray>
+      </Points>
+      <Lines>
+        <DataArray type="Int64" Name="connectivity" NumberOfComponents="1" format="binary">
+AQAAAAAAAADAAQAAAAAAAMABAAAAAAAATwAAAAAAAAA=eJx1zkEOwCAIRFGkKvT+F3bR/EV/4mzIMwMx4svQnPGPneqnJv3nss97ymRpD4+Lt/o45ZCXzL1Sv9TD3G/tt/q4ZP776h7ecssHmLgA5w==
+</DataArray>
+        <DataArray type="Int64" Name="offsets" NumberOfComponents="1" format="binary">
+AQAAAAAAAADgAAAAAAAAAOAAAAAAAAAAQgAAAAAAAAA=eJwtxUEKQEAAAEBJkiRJkrRJkiRJkv+/zMHMZeLolzh15tyFS1eu3bh1596Dg0dPnr149ebdh09fvv349Qf+oAMt
+</DataArray>
+      </Lines>
+      <CellData>
+        <DataArray type="Int64" Name="edge_id" NumberOfComponents="1" format="binary">
+AQAAAAAAAADgAAAAAAAAAOAAAAAAAAAAOgAAAAAAAAA=eJwtxbUBgDAAADDcobj/fycDyZI4+iVOnTl34dKVazdu3bn34ODRk2cvXr159+HTl28/fv0Bf8ABlw==
+</DataArray>
+      </CellData>
+    </Piece>
+  </PolyData>
+</VTKFile>
