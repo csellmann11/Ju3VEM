@@ -50,16 +50,16 @@ _coarsen!(vol,topo)
 
 
 
-geometry_to_vtk(topo, "vtk/3d_pyramide_refine_test")
+write_vtk(topo, "vtk/3d_pyramide_refine_test")
 
-# Also test tetrahedralization of the last volume if possible
-try
-    vol_id = length(get_volumes(topo))
-    tets_local, local_to_global = tetrahedralize_volume(topo, vol_id)
-    tet_topo = build_tet_topology_from_volume(topo, vol_id; tets_local)
-    geometry_to_vtk(tet_topo, "pyramid_tets")
-catch err
-    @warn "Ear-peeling tetrahedralization failed for pyramid test (acceptable for non-star-shaped cases)" err
-end
+# # Also test tetrahedralization of the last volume if possible
+# try
+#     vol_id = length(get_volumes(topo))
+#     tets_local, local_to_global = tetrahedralize_volume(topo, vol_id)
+#     tet_topo = build_tet_topology_from_volume(topo, vol_id; tets_local)
+#     write_vtk(tet_topo, "pyramid_tets")
+# catch err
+#     @warn "Ear-peeling tetrahedralization failed for pyramid test (acceptable for non-star-shaped cases)" err
+# end
 
 

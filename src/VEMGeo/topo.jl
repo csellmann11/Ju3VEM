@@ -482,36 +482,6 @@ function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F
     end
 end
 
-"""
-    iterate_volume_areas(fun::F1, 
-        facedata_col::Dict{Int,FD}, 
-        topo::Topology{D}, volume_id::Int, 
-        cond::F2=is_root) where {D,F1,F2,FD} 
-
-Iterate over the areas of a volume and apply a function on the areas.
-
-# Arguments
-- `fun::Function`: The function to apply on the areas. fun takes 
-the `root_area`, `facedata` and `topo` as arguments
-- `facedata_col::Dict{Int,FD}`: The dictionary of face data.
-- `topo::Topology{D}`: The topology to get the areas from.
-- `volume_id::Int`: The id of the volume to iterate over.
-- `cond::Function`: The condition to check if the area should be applied.
-"""
-function iterate_volume_areas(fun::F1, 
-    facedata_col::Dict{Int,FD}, 
-    topo::Topology{D}, volume_id::Int, 
-    cond::F2=is_root) where {D,F1,F2,FD} 
-
-    area_ids = get_volume_area_ids(topo, volume_id)
-    areas = get_areas(topo)
-    for area_id in area_ids
-        area = areas[area_id]
-        apply_f_on_unordered(cond, area, areas) do root_area
-            fun(root_area, facedata_col[root_area.id], topo)
-        end
-    end
-end
 
 
 
@@ -563,15 +533,15 @@ apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =
 
 function apply_f_on_unordered(f::F1, 
     cond::F2, 
-    feature, 
-    features) where {F1<:Function,F2<:Function}
+    feature::T, 
+    features::AbstractVector{T}) where {F1<:Function,F2<:Function,T<:NManifold}
 
     if cond(feature) && is_active(feature)
         f(feature)
         return nothing
     end
     
-    for child_id in feature.childs
+    for child_id in feature.childs 
         apply_f_on_unordered(f, cond, features[child_id], features)
     end
     nothing
@@ -579,6 +549,40 @@ end
 
 apply_f_on_unordered_roots(f, feature, features) =
     apply_f_on_unordered(f, is_root, feature, features)
+
+
+
+"""
+iterate_volume_areas(fun::F1, 
+    facedata_col::Dict{Int,FD}, 
+    topo::Topology{D}, volume_id::Int, 
+    cond::F2=is_root) where {D,F1,F2,FD} 
+
+Iterate over the areas of a volume and apply a function on the areas.
+
+# Arguments
+- `fun::Function`: The function to apply on the areas. fun takes 
+the `root_area`, `facedata` and `topo` as arguments
+- `facedata_col::Dict{Int,FD}`: The dictionary of face data.
+- `topo::Topology{D}`: The topology to get the areas from.
+- `volume_id::Int`: The id of the volume to iterate over.
+- `cond::Function`: The condition to check if the area should be applied.
+"""
+function iterate_volume_areas(fun::F1, 
+facedata_col::Dict{Int,FD}, 
+topo::Topology{D}, volume_id::Int, 
+cond::F2=is_root) where {D,F1,F2,FD} 
+
+area_ids = get_volume_area_ids(topo, volume_id)
+areas = get_areas(topo)
+for area_id in area_ids
+    area = areas[area_id]
+    apply_f_on_unordered(cond, area, areas) do root_area
+        fun(root_area, facedata_col[root_area.id], topo)
+    end
+end 
+end
+
 
 """
     transform_topology_planar!(topo::Topology{3}, distort_fun, is_boundary)

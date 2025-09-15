@@ -5,39 +5,8 @@ using Chairmarks
 using LoopVectorization
 using Bumper, OrderedCollections, SmallCollections
 using Ju3VEM
+using Ju3VEM.VEMUtils: _create_facedata_col
 # import .Triangulation3D: FaceTriangulations3D
-
-# @testset "3D Face Integration (planar polygon)" begin
-#     # Build a rectangle in a random oriented plane
-#     o = SA[0.3, -0.2, 0.4]
-#     # Orthonormal basis
-#     n = normalize(SA[0.2, 1.0, -0.5])
-#     tmp = abs(n[1]) < 0.9 ? SA[1.0,0.0,0.0] : SA[0.0,1.0,0.0]
-#     u = normalize(cross(n, tmp))
-#     v = cross(n, u)
-#     a = 1.2
-#     b = 0.7
-#     rect2 = [SA[-a,-b], SA[a,-b], SA[a,b], SA[-a,b]]
-#     rect3 = [o + p[1]*u + p[2]*v for p in rect2]
-
-#     # Constant monomial integrates to area
-#     m0 = Monomial(1.0, SVector(0,0,0))
-#     I0 = integral(m0, rect3)
-#     A = Triangulation3D.polygon_area3D(rect3)
-#     @test isapprox(I0, A; rtol=1e-12, atol=1e-12)
-
-#     # Linear monomial centered at rectangle center integrates to zero
-#     bc = o
-#     m1x = Monomial(1.0, SVector(1,0,0))
-#     m1y = Monomial(1.0, SVector(0,1,0))
-#     m1z = Monomial(1.0, SVector(0,0,1))
-#     @test isapprox(integral(m1x, rect3, 1.0, bc), 0.0; atol=1e-12)
-#     @test isapprox(integral(m1y, rect3, 1.0, bc), 0.0; atol=1e-12)
-#     @test isapprox(integral(m1z, rect3, 1.0, bc), 0.0; atol=1e-12)
-
-#     # quick perf sanity
-#     _ = integral(m1x, rect3, 1.0, bc)
-# end
 
 
 @testset "3D Volume Integration (polyhedron via face triangles)" begin
@@ -86,6 +55,14 @@ using Ju3VEM
     add_node!.(pts, Ref(topo))
     add_volume!(faces, topo)
     vol_id = 1
+
+    bc = SA[0.5,0.5,0.5]
+    # topo_shifted = deepcopy(topo)
+    # for i in eachindex(topo_shifted.nodes)
+    #     topo_shifted.nodes[i] = Node(topo_shifted.nodes[i] - bc)
+    # end
+
+
     ft = FaceTriangulations3D(topo)
 
     # Quadratic: ∫ x^2 dV = 1/3, cross term ∫ x*y dV = 1/4
@@ -93,6 +70,25 @@ using Ju3VEM
     mxy = Monomial(1.0, SVector(1,1,0))
     @test isapprox(integrate_polynomial_over_volume(mxx, vol_id, topo, ft), 1/3; rtol=1e-12, atol=1e-12)
     @test isapprox(integrate_polynomial_over_volume(mxy, vol_id, topo, ft), 1/4; rtol=1e-12, atol=1e-12)
+
+
+
+
+
+    mesh = Mesh(topo, StandardEl{2}())
+    # cv = CellValues{1}(mesh)
+    fdc = _create_facedata_col(mesh)
+    vol_data = precompute_volume_monomials(1, mesh.topo, fdc, Val(2), false)
+    # @show vol_data.vol_bc
+    
+    mi = Monomial(1.0, SVector(1,1,0))
+    isym = compute_volume_integral_unshifted(mi, vol_data,1.0)
+    inum = integrate_polynomial_over_volume(mi, vol_id, topo, ft)
+    @show isym
+    @show inum
+    @show inum/isym
+    @show isym/inum
+    # @test isapprox(isym, inum; rtol=1e-12, atol=1e-12)
 
 end
 

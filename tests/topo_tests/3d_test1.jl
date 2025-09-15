@@ -88,5 +88,5 @@ end
 
 # _coarsen!(get_volumes(topo)[3],topo)
 
-geometry_to_vtk(topo, "vtk/3d_test1")
+write_vtk(topo, "vtk/3d_test1")
 

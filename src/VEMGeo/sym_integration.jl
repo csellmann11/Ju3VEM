@@ -158,7 +158,7 @@ function face2d_sym_integral(
     e1::Int,e2::Int,bc::StaticVector{2,T},
     plane::D2FaceParametrization{D}) where {D,T}
 
-    int_val = zero(T)
+    int_val = zero(T) 
 
     ngpoints = cld(e1 + e2 + 2, 2)
     gpoints,gweights =  
@@ -227,7 +227,7 @@ function precompute_face_monomials(
     end
 
     return FaceIntegralData(hf,bc,plane,SVector(integrals))
-end
+end 
 
 function precompute_face_monomials(
     face_id::Int,topo::Topology{D},::Val{K}) where {D,K}
@@ -237,16 +237,16 @@ function precompute_face_monomials(
     return precompute_face_monomials(face_nodes,Val(K))
 end
 
-function compute_face_integral(m::Monomial{T,3},
-    fd::FaceIntegralData{D,L},
-    offset::BT = nothing,
-    h::T = fd.hf) where {D,T,L,BT<:Union{Nothing,SVector{3,T}}}
 
-    order = sum(m.exp) 
-    len   = get_base_len(2,order,1)
+function compute_face_integral_coeffs!(
+    coeffs::AbstractVector{<:Float64},
+    m::Monomial{T,3},
+    fd::FaceIntegralData{D,L},
+    offset::BT = nothing
+    ) where {D,T,L,BT<:Union{Nothing,SVector{3,T}}}
 
     plane = fd.plane 
-
+ 
     bc3d_face  = project_to_3d(fd.bc,plane)
 
     offset_2d = if offset === nothing 
@@ -258,13 +258,26 @@ function compute_face_integral(m::Monomial{T,3},
     flat_offset = project_to_3d_flat(offset_2d,plane)
 
 
+    compute_transformation_coeffs3d_to_2d!(
+        coeffs,m, (bc3d_face-flat_offset),plane.u,plane.v)
+
+    return coeffs
+end
+
+
+function compute_face_integral(m::Monomial{T,3},
+    fd::FaceIntegralData{D,L},
+    offset::BT = nothing,
+    h::T = fd.hf) where {D,T,L,BT<:Union{Nothing,SVector{3,T}}}
+
+    order = sum(m.exp) 
+    len   = get_base_len(2,order,1)
+
     @assert len ≤ length(fd.integrals) "not enough integrals where precomputed"
 
     ∫m = @no_escape begin 
         coeffs = @alloc(Float64,len)
-        compute_transformation_coeffs3d_to_2d!(
-            coeffs,m, (bc3d_face-flat_offset),plane.u,plane.v)
-
+        compute_face_integral_coeffs!(coeffs,m,fd,offset)
 
         ∫m = zero(T)
         @inbounds for (i,ci) in enumerate(coeffs)
@@ -330,7 +343,8 @@ Precomputes the integrals of the monomials on a volume up to the monomial order 
 """
 function precompute_volume_monomials(vol_id::Int,
     topo::Topology,
-    facedata_col::Dict{Int,<:FaceData{3}},::Val{K_MAX}) where {K_MAX}
+    facedata_col::Dict{Int,<:FaceData{3}},::Val{K_MAX}, 
+    shift_bc = true) where {K_MAX}
 
 
 
@@ -344,7 +358,7 @@ function precompute_volume_monomials(vol_id::Int,
     # Maby replace this with the mean of the face barycenters
     _some_point_inside = mean(get_nodes(topo)[ni] for ni in get_volume_node_ids(topo,vol_id))
 
-    geo_data = zero(MVector{4,Float64})
+    geo_data = zero(MVector{4,Float64}) 
     # the areea and th ebary cneter are computed without the offset 
     # therefore they are in an extra loop
 
@@ -358,9 +372,6 @@ function precompute_volume_monomials(vol_id::Int,
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
             normal = get_outward_normal(_some_point_inside,facedata)
-            # i == 1 &&  @show  compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
-            # i == 1 &&  @show normal[1]
-            # i == 1 &&  @show norm(normal)
             geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
         end
     end
@@ -369,6 +380,11 @@ function precompute_volume_monomials(vol_id::Int,
     vol_bc         = SA[geo_data[2],geo_data[3],geo_data[4]]/volume_measure
 
     integrals[1] = volume_measure
+    if !shift_bc 
+        integrals[2:4] .= vol_bc
+    end
+
+    integral_center = shift_bc ? vol_bc : zero(vol_bc)
 
     for i in 5:length(base)
         mi = base[i]
@@ -379,7 +395,7 @@ function precompute_volume_monomials(vol_id::Int,
         
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            integrals[i] += compute_face_integral(m_face,dΩ,vol_bc,hvol)
+            integrals[i] += compute_face_integral(m_face,dΩ,integral_center,1.0)#hvol)
         end
     end
 
@@ -394,10 +410,6 @@ function compute_volume_integral_unshifted(m::Monomial{T,3},
     order = sum(m.exp)
     return m.val*vol_data.integrals[idx]/(h^order)
 end
-
-
-
-
 
 
 

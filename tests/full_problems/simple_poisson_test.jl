@@ -11,7 +11,7 @@ end
 
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
-nx,ny,nz = 1,1,1
+nx,ny,nz = 30,30,30
 dx = 1/nx; dy = 1/ny; dz = 1/nz
 
 # Generate coordinate ranges
@@ -28,12 +28,10 @@ topo = Topology{3}()
 # Add all nodes to topology
 add_node!.(coords, Ref(topo))
 
-# Create linear indices for easy access
-idxs = LinearIndices((nx+1, ny+1, nz+1))
-
 # =============================================================================
 # Create hexahedral elements
 # =============================================================================
+idxs = LinearIndices((nx+1, ny+1, nz+1))
 
 for I in CartesianIndices((nx, ny, nz))
     i, j, k = Tuple(I)
@@ -57,7 +55,7 @@ add_node_set!(mesh, "dirichlet", x -> x[1] == 0 || x[1] == 1 ||
     x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1)
 ch = ConstraintHandler{1}(mesh)
 
-cv = CellValues{1}(mesh)
+cv = CellValues{1}(mesh);
 add_dirichlet_bc!(ch,cv.dh,"dirichlet",x -> 0.0)
 
 
@@ -128,7 +126,7 @@ end
 
 
 apply!(k_global,rhs_global,ch)
-u = k_global \ rhs_global
+@time "solver_time" u = k_global \ rhs_global
 
 
 max_idx = argmax(u)
@@ -138,4 +136,4 @@ if iseven(nx) && iseven(ny) && iseven(nz)
 end
 
 
-geometry_to_vtk(mesh.topo, "vtk/simple_poisson_test", u)
+write_vtk(mesh.topo, "vtk/simple_poisson_test",cv.dh,u)

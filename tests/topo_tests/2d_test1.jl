@@ -74,5 +74,5 @@ end
 # Export to VTK for visualization
 # =============================================================================
 
-geometry_to_vtk(topo, "2d_test1")
+write_vtk(topo, "2d_test1")
 

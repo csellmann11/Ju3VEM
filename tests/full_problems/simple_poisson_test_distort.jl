@@ -12,7 +12,7 @@ end
 
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
-nx,ny,nz =  20,20,20
+nx,ny,nz =  30,30,30
 dx = 1/nx; dy = 1/ny; dz = 1/nz
 
 function is_boundary(x)
@@ -120,7 +120,7 @@ end
 
 
 apply!(k_global,rhs_global,ch)
-u = k_global \ rhs_global
+@time u = k_global \ rhs_global
 
 
 max_idx = argmax(u)
@@ -130,4 +130,4 @@ if iseven(nx) && iseven(ny) && iseven(nz)
 end
 
 
-geometry_to_vtk(mesh.topo, "vtk/simple_poisson_test_distort", u)
+write_vtk(mesh.topo, "vtk/simple_poisson_test_distort",cv.dh,u)

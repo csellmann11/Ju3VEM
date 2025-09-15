@@ -110,5 +110,6 @@ function integrate_polynomial_over_volume(m::Monomial, tet_id::Int, topo::Topolo
         λ           = check_normal_sign(n, face_node, element_center)
         int        += λ*_area_int
     end 
-    return int/(exp[1])
+    # return int/(exp[1])
+    int/(exp[1])
 end

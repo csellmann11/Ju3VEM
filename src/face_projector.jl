@@ -97,40 +97,30 @@ function create_D_mat(mesh::Mesh{D,ET},
     fd::FaceData) where {D,O,ET<:ElType{O}}
 
     base = get_base(BaseInfo{2,O,1}())
-    plane = fd.dΩ.plane
 
-    area   = get_area(fd); 
-    hf     = get_hf(fd); 
-    center = get_bc(fd)
-
-    vertex_ids      = fd.face_node_ids.v.args[1]
-    edge_vertex_ids = fd.face_node_ids.v.args[2]
-    moment_ids      = fd.face_node_ids.v.args[3] 
+    vertex_ids,edge_vertex_ids,moment_ids = fd.face_node_ids.v.args
 
     vertices        = @views mesh.nodes[vertex_ids]
     edge_vertices   = @views mesh.nodes[edge_vertex_ids]
 
-    num_vertices = length(vertex_ids)
-    num_edge_vertices = length(edge_vertex_ids)
+    num_vertives_total = length(vertex_ids) + length(edge_vertex_ids)
 
-    num_vertives_total = num_vertices + num_edge_vertices
-
-    num_nodes = num_vertives_total + length(moment_ids)
-    # D_mat = zeros(Float64,num_nodes,length(base))
     D_mat = 
-          FixedSizeMatrix{Float64}(undef,num_nodes,length(base))
+          FixedSizeMatrix{Float64}(undef,
+          num_vertives_total + length(moment_ids),
+          length(base))
  
 
     for (idx,m) in enumerate(base)
         # Nodal evaluations
         for (i,node) in enumerate(Iterators.flatten((vertices,edge_vertices)))
-
-            node_2d = project_to_2d_abs(node,plane)
-            D_mat[i,idx] = m(node_2d,center,hf)
+            node_2d = project_to_2d_abs(node,fd.dΩ.plane)
+            D_mat[i,idx] = m(node_2d,get_bc(fd),get_hf(fd))
         end
 
         for i in eachindex(moment_ids)
-            D_mat[num_vertives_total+i,idx] = compute_face_integral_unshifted(m*base[i],fd.dΩ)/area
+            D_mat[num_vertives_total+i,idx] = compute_face_integral_unshifted(
+                m*base[i],fd.dΩ)/get_area(fd)
         end
     end
     return D_mat
@@ -158,6 +148,7 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
                        dΩ::FaceIntegralData) where {D,O,ET<:ElType{O}}
 
     @assert face_id > 0 "face_id is not positive"
+    @assert O <= 2 "currently only implemented for O=1 and O=2"
     face = get_areas(mesh.topo)[face_id]
     
 
@@ -168,9 +159,9 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
     full_node_ids = FlattenVecs{3,Int}()
     get_iterative_area_node_ids!(full_node_ids,face,mesh)
 
-    # ΠsL2 = zeros(length(base),length(full_node_ids))
-    ΠsL2 = FixedSizeMatrix{Float64}(undef,length(base),length(full_node_ids))
-    ΠsL2 .= 0.0
+
+    ΠsL2 = FixedSizeMatrix{Float64}(
+        undef,length(base),length(full_node_ids))
 
     face_data = FaceData(full_node_ids,dΩ,ΠsL2)
 
@@ -190,7 +181,6 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
 
     Octavian.matmul!(Π_star,invG_mat,B_mat)
 
-    # High-order stabilization hooks could be added here if needed
 
     return face_data
 end

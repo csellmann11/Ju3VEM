@@ -2,7 +2,8 @@ using StaticArrays
 using Test
 using Ju3VEM
 using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
-
+using Chairmarks
+using JET
 
 function _create_pyramid_topology()
     topo = Topology{3}()
@@ -35,11 +36,17 @@ function _create_facedata_col(mesh::Mesh{3,StandardEl{K}}) where K
     K_MAX = max(2*K-1, 2)
     base = get_base(BaseInfo{2, K_MAX, 1}()).base
     topo = mesh.topo
-    facedata_col = Dict{Int,FaceData{3, length(base)}}()
-    for face in RootIterator{3}(topo)
-        dΩ = precompute_face_monomials(face.id, topo, Val(K_MAX))
-        facedata_col[face.id] = h1_projectors!(face.id, mesh, dΩ)
-    end
+    # facedata_col = Dict{Int,FaceData{3, length(base)}}()
+    # for face in RootIterator{3}(topo)
+    #     dΩ = precompute_face_monomials(face.id, topo, Val(K_MAX))
+    #     facedata_col[face.id] = h1_projectors!(face.id, mesh, dΩ)
+    # end
+    facedata_col = Dict(
+        face.id => h1_projectors!(
+            face.id, mesh, 
+            precompute_face_monomials(face.id, topo, Val(K_MAX))
+            ) for face in RootIterator{3}(topo)
+    )
     return facedata_col
 end
 
@@ -102,7 +109,7 @@ end
 
 
 
-@testset "3D Mesh pipeline: creation, integration, and B-matrix" begin
+rep =  begin
     topo = _create_pyramid_topology()
     mesh = Mesh(topo, StandardEl{2}())
     base3d = get_base(BaseInfo{3,2,1}()).base
@@ -124,27 +131,41 @@ end
 
     gmat3d = SMatrix{length(base3d),length(base3d)}(bmat3d*dmat3d)
 
+
+
     proj_s = inv(gmat3d) * bmat3d
 
+    proj = dmat3d * proj_s
+    proj_s2, proj2 = create_volume_vem_projectors(1, mesh, vol_data, facedata_col, ntl)
+
+    @test proj ≈ proj2
+    @test proj_s ≈ proj_s2
 
     uv = rand(length(mesh.nodes))
-    proj_uv = dmat3d * proj_s * uv
 
-    proj2_uv = dmat3d * proj_s * proj_uv
+    proj_uv = proj * uv
+
+    proj2_uv = proj * proj_uv
 
     @test proj_uv ≈ proj2_uv
 
     uv2 = dmat3d[:,end] + dmat3d[:,end-1]
 
-    proj_uv2 = dmat3d * proj_s * uv2
+    proj_uv2 = proj2 * uv2
     @test uv2 ≈ proj_uv2
 
     uv3 = dmat3d[:,1]
     
-    proj_uv3 = dmat3d * proj_s * uv3
+    proj_uv3 = proj * uv3
     @test uv3 ≈ proj_uv3
 
-   
+    b = @b create_volume_bmat(1, $mesh, $vol_data.vol_bc, $vol_data.hvol, $abs_volume, $facedata_col, $ntl)
+    display(b)
+
+    b2 = @b create_volume_dmat(1, $mesh, $vol_data.vol_bc, $vol_data.hvol, $facedata_col, $vol_data, $abs_volume, $ntl)
+    display(b2)
+
+
 end
 
 

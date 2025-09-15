@@ -4,7 +4,7 @@ using Ju3VEM
 using LinearAlgebra
 using Ju3VEM.VEMGeo: transform_topology_planar!,transform_topology_linear_elements!
 using Ju3VEM.VEMGeo: _refine!,_coarsen!
-using Ju3VEM.VEMUtils: sol_to_vtk
+using Ju3VEM.VEMUtils: write_vtk
 # using Ju3VEM.VEMUtils: create_volume_vem_projectors, reinit!,get_n_cell_dofs
 # using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
 # using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
@@ -15,30 +15,30 @@ end
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
 nx,ny,nz =  10,10,10
-dx = 1/nx; dy = 1/ny; dz = 1/nz
+# dx = 1/nx; dy = 1/ny; dz = 1/nz
 
-function is_boundary(x)
-    return x[1] == 0 || x[1] == 1 ||
-    x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
-end
+# function is_boundary(x)
+#     return x[1] == 0 || x[1] == 1 ||
+#     x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
+# end
 
-x_coords = range(0, nx*dx, length=nx+1)
-y_coords = range(0, ny*dy, length=ny+1)
+# x_coords = range(0, nx*dx, length=nx+1)
+# y_coords = range(0, ny*dy, length=ny+1)
 
-coords = [SA[x,y] for x in x_coords, y in y_coords]
+# coords = [SA[x,y] for x in x_coords, y in y_coords]
 
-topo = Topology{2}()
-add_node!.(coords, Ref(topo))
+# topo = Topology{2}()
+# add_node!.(coords, Ref(topo))
 
-idxs = LinearIndices((nx+1, ny+1))
+# idxs = LinearIndices((nx+1, ny+1))
 
-for I in CartesianIndices((nx, ny))
-    i, j = Tuple(I)
-    node_ids = [idxs[i,j],idxs[i+1,j],idxs[i+1,j+1],idxs[i,j+1]]
-    add_area!(node_ids,topo)
-end
+# for I in CartesianIndices((nx, ny))
+#     i, j = Tuple(I)
+#     node_ids = [idxs[i,j],idxs[i+1,j],idxs[i+1,j+1],idxs[i,j+1]]
+#     add_area!(node_ids,topo)
+# end
 
-mesh2d = Mesh(topo, StandardEl{1}())
+# mesh2d = Mesh(topo, StandardEl{1}())
 mesh2d = create_voronoi_mesh((0.0,0.0),(1.0,1.0),nx,ny,StandardEl{1},false)
 mesh   = extrude_to_3d(nz,mesh2d,1.0);
 
@@ -170,4 +170,4 @@ end
 # geometry_to_vtk(mesh.topo, 
 # "vtk/simple_poisson_test_ref")
 
-sol_to_vtk(mesh.topo, cv.dh, u, "vtk/simple_poisson_test_ref")
+write_vtk(mesh.topo,"vtk/simple_poisson_test_ref", cv.dh, u)

@@ -4,7 +4,7 @@ using OrderedCollections, Bumper
 using Statistics
 using SmallCollections, Chairmarks
 using Ju3VEM
-
+using Ju3VEM.VEMGeo: project_to_plane
 ################################################################################
 # 1) Triangulate a planar polygon in 3D (arbitrary orientation)
 #    Export as 2D topology using projected 2D points
@@ -49,12 +49,12 @@ let
     # Export as 2D topology using projected 2D points
     o,u,v, pts2 = project_to_plane(poly3)
     topo2 = Topology{2}()
-    node_ids2 = Int[]
+    node_ids2 = Int64[]
     append!(node_ids2, add_node!.(pts2, Ref(topo2)))
     for (i,j,k) in tris
         add_area!(SVector(node_ids2[i], node_ids2[j], node_ids2[k]), topo2)
     end
-    geometry_to_vtk(topo2, "vtk/triangulated_plane_2d")
+    write_vtk(topo2, "vtk/triangulated_plane_2d")
 end
 
 ################################################################################
@@ -67,7 +67,7 @@ let
         SA[0.0,0.0,1.0], SA[1.0,0.0,1.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]
     ]
     topoC = Topology{3}()
-    cube_ids = Int[]
+    cube_ids = Int64[]
     append!(cube_ids, add_node!.(cube_pts, Ref(topoC)))
     faces_cube = [
         [cube_ids[1], cube_ids[2], cube_ids[3], cube_ids[4]], # bottom z=0
@@ -100,13 +100,13 @@ let
     tet_topo = build_tet_topology_from_volume(topoC, vol_id; tets_local)
     
 
-    geometry_to_vtk(tet_topo, "vtk/cube_tets")
+    write_vtk(tet_topo, "vtk/cube_tets")
 
     # Pyramid test
     topoP = Topology{3}()
     base = [SA[0.0, 0.0, 0.0], SA[1.0, 0.0, 0.0], SA[1.0, 1.0, 0.0], SA[0.0, 1.0, 0.0]]
     apex = SA[0.4, 0.7, 1.2]
-    idsP = Int[]
+    idsP = Int64[]
     append!(idsP, add_node!.(base, Ref(topoP)))
     push!(idsP, add_node!(apex, topoP))
     base_ids = idsP[1:4]; apex_id = idsP[5]
@@ -159,8 +159,9 @@ let
 
     # Polygon area via shoelace
     area_true = 0.0
-    for i in 1:length(star2d)
-        j = i == length(star2d) ? 1 : i + 1
+    for i in eachindex(star2d)
+        # j = i == length(star2d) ? 1 : i + 1
+        j = get_next_idx(star2d, i)
         area_true += star2d[i][1]*star2d[j][2] - star2d[j][1]*star2d[i][2]
     end
     area_true = abs(area_true) / 2
@@ -177,12 +178,12 @@ let
 
     # Export as 2D topology
     topo_star = Topology{2}()
-    node_ids = Int[]
+    node_ids = Int64[]
     append!(node_ids, add_node!.(star2d, Ref(topo_star)))
     for (i,j,k) in tris
         add_area!(SVector(node_ids[i], node_ids[j], node_ids[k]), topo_star)
     end
-    geometry_to_vtk(topo_star, "vtk/star2d_tri")
+    write_vtk(topo_star, "vtk/star2d_tri")
 end
 
 ################################################################################
@@ -196,17 +197,18 @@ let
     top    = [@SVector [R*cos(2π*k/m), R*sin(2π*k/m), h]   for k in 0:m-1]
 
     topo = Topology{3}()
-    ids_bottom = Int[]
-    ids_top = Int[]
+    ids_bottom = Int64[]
+    ids_top = Int64[]
     append!(ids_bottom, add_node!.(bottom, Ref(topo)))
     append!(ids_top,    add_node!.(top,    Ref(topo)))
 
     # Faces: bottom hex, top hex, and 6 quads for sides
-    faces = Vector{Vector{Int}}()
+    faces = Vector{Vector{Int64}}()
     push!(faces, copy(ids_bottom))
     push!(faces, copy(ids_top))
     for i in 1:m
-        ip1 = i == m ? 1 : i + 1
+        # ip1 = i == m ? 1 : i + 1
+        ip1 = get_next_idx(ids_bottom, i)
         push!(faces, [ids_bottom[i], ids_bottom[ip1], ids_top[ip1], ids_top[i]])
     end
 
@@ -233,7 +235,7 @@ let
     @assert isapprox(vol_sum, vol_true; rtol=1e-8, atol=1e-10)
 
     tet_topo = build_tet_topology_from_volume(topo, vol_id; tets_local)
-    geometry_to_vtk(tet_topo, "vtk/hex_prism_tets")
+    write_vtk(tet_topo, "vtk/hex_prism_tets")
 end
 
 # ################################################################################

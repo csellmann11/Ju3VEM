@@ -30,7 +30,7 @@ module VEMGeo
     # Refinement / coarsening and I/O
     include("VEMGeo/element_refinement.jl")
     include("VEMGeo/element_coarsening.jl")
-    include("VEMGeo/vtkexports.jl")
+    # include("VEMGeo/vtkexports.jl")
 
 
     # include("element_mapping.jl")#! relies on eltye and mesh
@@ -66,7 +66,7 @@ module VEMGeo
 
         # Utilities
         get_next_idx, get_prev_idx, get_unique_values, find_single_intersec, max_node_distance,
-        geometry_to_vtk,
+        # geometry_to_vtk,
 
         # Lagrange utils (selective)
         lagrange_shape_function, interpolate_edge,
@@ -106,7 +106,7 @@ module VEMUtils
     using FixedSizeArrays
     using ..VEMGeo
     import ..VEMGeo: FlattenVecs, iterate_volume_areas, iterate_element_edges
-    import ..VEMGeo: get_iterative_area_vertex_ids
+    import ..VEMGeo: get_iterative_area_vertex_ids, getexp
     using Octavian
     using Bumper
     using SparseArrays
@@ -122,6 +122,7 @@ module VEMUtils
     include("VEMUtils/apply.jl")
     include("VEMUtils/assembler.jl")
     include("VEMUtils/vor_mesh.jl")
+    include("VEMUtils/vtkexports.jl")
 
     export 
         # Mesh and element types
@@ -146,7 +147,9 @@ module VEMUtils
         # Apply
         apply!,
         # Assembler
-        Assembler, local_assembly!, assemble!
+        Assembler, local_assembly!, assemble!,
+        # VTK exports
+        write_vtk
 end # module VEMUtils
 
 @reexport using .VEMUtils

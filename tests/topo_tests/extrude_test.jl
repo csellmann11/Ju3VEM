@@ -3,6 +3,8 @@ using StaticArrays
 using Ju3VEM.VEMUtils: extrude_to_3d, create_voronoi_mesh
 using Test
 
+
+# using Ju3VEM.VEMUtils: write_vtk
 n = 10
 nx,ny = n,n
 nz = n
@@ -33,7 +35,7 @@ mesh3d = extrude_to_3d(nz,mesh)
 
 @test allunique(mesh3d.topo.nodes)
 
-geometry_to_vtk(mesh3d.topo, "vtk/extrude_test")
+write_vtk(mesh3d.topo, "vtk/extrude_test")
 
 
 
@@ -44,4 +46,4 @@ mesh3d = extrude_to_3d(nz,mesh2d)
 
 @test allunique(mesh3d.topo.nodes)
 
-geometry_to_vtk(mesh3d.topo, "vtk/extrude_test_voronoi")
+write_vtk(mesh3d.topo, "vtk/extrude_test_voronoi")

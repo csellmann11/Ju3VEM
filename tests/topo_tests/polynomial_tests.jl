@@ -6,6 +6,20 @@ using Ju3VEM
 using FixedSizeArrays
 using Ju3VEM.VEMGeo: poly_pow
 
+
+@testset "Monomial Tests" begin 
+    @testset "Monomial Construction and Evaluation" begin
+        m = Monomial(1.0, SA[2,1,3])
+        display(m)
+        m2 = 3*m  
+        @test m2.val == 3.0 
+        
+    end
+
+
+
+end
+
 @testset "Polynomial Basic Operations" begin
     @testset "Polynomial Construction and Evaluation" begin
         bi = BaseInfo{2,2,1}()
@@ -71,32 +85,6 @@ end
 end
 
 @testset "Coordinate Transformations" begin
-    # @testset "2D to 3D Transformation" begin
-    #     quad_nodes = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]]
-    #     u, v, n, nus, p0 = Ju3VEM.VEMGeo.get_plane_parameters(quad_nodes)
-
-    #     # Test 2d to 3d
-    #     m2d = Monomial(1.0, SA[1,1])
-    #     coeffs = compute_transformation_coeffs2d_to_3d(m2d, p0, u, v)
-        
-    #     # Benchmark the transformation
-    #     be = @be compute_transformation_coeffs2d_to_3d($m2d, $p0, $u, $v)
-    #     display(be)
-
-    #     lin3d_base = get_base(BaseInfo{3,1,1}()).base
-    #     p1 = Polynomial(vcat(0.0, u), lin3d_base)
-    #     p2 = Polynomial(vcat(0.0, v), lin3d_base)
-    #     p = p1 * p2
-
-    #     @test p.coeffs ≈ coeffs
-
-    #     x2d = SA[0.5, 0.3]
-    #     val2d = m2d(x2d)
-    #     x3d = x2d[1]*u + x2d[2]*v
-    #     val3d = p(x3d)
-
-    #     @test val2d ≈ val3d
-    # end
 
     @testset "3D to 2D Transformation" begin
         quad_nodes = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]]
@@ -112,14 +100,6 @@ end
 
         p = p1 * p2 * p3
         coeffs = compute_transformation_coeffs3d_to_2d(m3d, p0, u, v)
-
-        b = @b compute_transformation_coeffs3d_to_2d!($coeffs,$m3d, $p0, $u, $v)
-        display(b)
-
-
-        # Benchmark the transformation
-        be = @b compute_transformation_coeffs3d_to_2d($m3d, $p0, $u, $v)
-        display(be)
 
         @test p.coeffs ≈ coeffs
 
