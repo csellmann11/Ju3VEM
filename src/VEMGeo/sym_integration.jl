@@ -381,7 +381,7 @@ function precompute_volume_monomials(vol_id::Int,
 
     integrals[1] = volume_measure
     if !shift_bc 
-        integrals[2:4] .= vol_bc
+        integrals[2:4] .= SA[geo_data[2],geo_data[3],geo_data[4]]
     end
 
     integral_center = shift_bc ? vol_bc : zero(vol_bc)
@@ -395,7 +395,8 @@ function precompute_volume_monomials(vol_id::Int,
         
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            integrals[i] += compute_face_integral(m_face,dΩ,integral_center,1.0)#hvol)
+            normal = get_outward_normal(_some_point_inside,facedata)
+            integrals[i] += compute_face_integral(m_face*normal[1],dΩ,integral_center,1.0)#hvol)
         end
     end
 

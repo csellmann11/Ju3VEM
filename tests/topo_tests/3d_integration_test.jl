@@ -79,9 +79,10 @@ using Ju3VEM.VEMUtils: _create_facedata_col
     # cv = CellValues{1}(mesh)
     fdc = _create_facedata_col(mesh)
     vol_data = precompute_volume_monomials(1, mesh.topo, fdc, Val(2), false)
-    # @show vol_data.vol_bc
+    display(vol_data.integrals)
     
-    mi = Monomial(1.0, SVector(1,1,0))
+    mi = Monomial(1.0, SVector(2,0,0))
+    @show Ju3VEM.VEMGeo.get_exp_to_idx_dict(mi.exp)
     isym = compute_volume_integral_unshifted(mi, vol_data,1.0)
     inum = integrate_polynomial_over_volume(mi, vol_id, topo, ft)
     @show isym
