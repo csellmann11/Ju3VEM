@@ -414,6 +414,21 @@ end
 
 
 
+function compute_volume_integral_unshifted(p::Polynomial,
+    vol_data::VolumeIntegralData{L},h::T = vol_data.hvol) where {T,L}
+
+    integral = 0.0 
+    for (c,mbase) in zip(p.coeffs,p.base) 
+        m = mbase*c
+        integral += compute_volume_integral_unshifted(
+            m,vol_data,h
+        )
+    end
+    integral
+end
+
+
+
 
 
 

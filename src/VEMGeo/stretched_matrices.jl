@@ -7,7 +7,7 @@ function StretchedMatrix{λ}(A::AbstractMatrix{T}) where {T,λ}
 end
 
 # Hilfsfunktion zum Erstellen einer StretchedMatrix
-stretch(A::AbstractMatrix, ::Val{λ}) where λ = StretchedMatrix{λ}(A)
+stretch(A::AbstractMatrix, ::Val{λ} = Val(1)) where λ = StretchedMatrix{λ}(A)
 
 # Optimized getindex-Methode für StretchedMatrix
 Base.@propagate_inbounds function Base.getindex(A::StretchedMatrix{T,λ,M}, i::Int, j::Int) where {T,λ,M}   

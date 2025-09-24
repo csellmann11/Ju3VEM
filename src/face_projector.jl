@@ -100,20 +100,21 @@ function create_D_mat(mesh::Mesh{D,ET},
 
     vertex_ids,edge_vertex_ids,moment_ids = fd.face_node_ids.v.args
 
-    vertices        = @views mesh.nodes[vertex_ids]
-    edge_vertices   = @views mesh.nodes[edge_vertex_ids]
+    # vertices        = @views mesh.nodes[vertex_ids]
+    # edge_vertices   = @views mesh.nodes[edge_vertex_ids]
 
     num_vertives_total = length(vertex_ids) + length(edge_vertex_ids)
 
-    D_mat = 
-          FixedSizeMatrix{Float64}(undef,
+    D_mat = FixedSizeMatrix{Float64}(undef,
           num_vertives_total + length(moment_ids),
           length(base))
  
 
     for (idx,m) in enumerate(base)
         # Nodal evaluations
-        for (i,node) in enumerate(Iterators.flatten((vertices,edge_vertices)))
+        # for (i,node) in enumerate(Iterators.flatten((vertices,edge_vertices)))
+        for (i,node_id) in enumerate(Iterators.flatten((vertex_ids,edge_vertex_ids)))
+            node = mesh[node_id]
             node_2d = project_to_2d_abs(node,fd.dΩ.plane)
             D_mat[i,idx] = m(node_2d,get_bc(fd),get_hf(fd))
         end

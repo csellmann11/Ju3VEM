@@ -2,17 +2,14 @@ using StaticArrays
 using Test
 using Ju3VEM
 using LinearAlgebra
-using Ju3VEM.VEMGeo: transform_topology_planar!,transform_topology_linear_elements!
-# using Ju3VEM.VEMUtils: create_volume_vem_projectors, reinit!,get_n_cell_dofs
-# using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
-# using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
+using Ju3VEM.VEMUtils: extrude_to_3d
 function rhs_fun(x) 
     return 3*π^2*sin(π*x[1])*sin(π*x[2])*sin(π*x[3])
 end
 
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
-nx,ny,nz =  30,30,30
+nx,ny,nz =  10,10,10
 dx = 1/nx; dy = 1/ny; dz = 1/nz
 
 function is_boundary(x)
@@ -20,25 +17,7 @@ function is_boundary(x)
     x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
 end
 
-# x_coords = range(0, nx*dx, length=nx+1)
-# y_coords = range(0, ny*dy, length=ny+1)
 
-# coords = [SA[x,y] for x in x_coords, y in y_coords]
-
-# topo = Topology{2}()
-# add_node!.(coords, Ref(topo))
-
-# idxs = LinearIndices((nx+1, ny+1))
-
-# for I in CartesianIndices((nx, ny))
-#     i, j = Tuple(I)
-#     node_ids = [idxs[i,j],idxs[i+1,j],idxs[i+1,j+1],idxs[i,j+1]]
-#     add_area!(node_ids,topo)
-# end
-
-# mesh2d = Mesh(topo, StandardEl{1}())
-
-# mesh = extrude_to_3d(nz,mesh2d,1.0)
 mesh2d = create_voronoi_mesh((0.0,0.0),(1.0,1.0),nx,ny,StandardEl{1},false)
 mesh   = extrude_to_3d(nz,mesh2d,1.0);
 
@@ -78,6 +57,9 @@ k_global,rhs_global = let
 
         n_cell_dofs = get_n_cell_dofs(cv)
 
+       
+
+        
         gelement = zeros(length(base3d),length(base3d))
         for (i,m3d_i) in enumerate(base3d)
             ∇m3d_i = ∇(m3d_i,hvol)
@@ -95,8 +77,6 @@ k_global,rhs_global = let
             rhs_element[i] = rhs_fun(x)/n_cell_dofs*abs_volume 
         end
 
-        # display(kelement)
-        # display(rhs_element)
         stab = (I-proj)'*(I-proj)*hvol/8
 
 

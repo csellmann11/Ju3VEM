@@ -33,29 +33,69 @@ function add_node_set!(mesh::Mesh,
 end
 
 
-function add_edge_set!(mesh::Mesh,
-    set_name::String,
-    f::F;
-    check_unique::Bool = true) where F <: Function
+# function add_edge_set!(mesh::Mesh,
+#     set_name::String,
+#     f::F;
+#     check_unique::Bool = true) where F <: Function
 
-    check_unique && check_unique_set_name(mesh,set_name,:edge_sets)
+#     check_unique && check_unique_set_name(mesh,set_name,:edge_sets)
 
-    e_set = Set{Int}()
+#     e_set = Set{Int}()
+#     topo = mesh.topo
+
+#     for edge in RootIterator{2}(topo)
+
+#         if all(
+#             f(mesh[node_id]) && is_active(mesh[node_id])
+#                 for node_id in get_edge_node_ids(topo,edge.id)
+#             )
+
+#             push!(e_set,edge.id)
+#         end
+#     end
+#     mesh.edge_sets[set_name] = e_set
+# end
+
+function get_manifold_set_name(manifold_dim::Val{D}) where D
+    if D == 2
+        return :edge_sets
+    elseif D == 3
+        return :face_sets
+    elseif D == 4
+        return :volume_sets
+    end
+    error("Invalid manifold dimension")
+end
+
+function add_manifold_set!(mesh::Mesh,
+    set_name::String, 
+    f::F, 
+    manifold_dim::Val{D};
+    check_unique::Bool = true) where {D,F <: Function}
+
+    manifold_set_name = get_manifold_set_name(manifold_dim)
+    check_unique && check_unique_set_name(mesh,set_name,manifold_set_name)
+
+    m_set = Set{Int}()
     topo = mesh.topo
 
-    for edge in RootIterator{2}(topo)
-
-        if all(
-            f(mesh[node_id]) && is_active(mesh[node_id])
-                for node_id in get_edge_node_ids(topo,edge.id)
-            )
-
-            push!(e_set,edge.id)
+    for manifold in RootIterator{D}(topo)
+        m_node_ids = topo.connectivity[1, D][manifold.id]
+        if all(f(mesh[node_id]) && is_active(mesh[node_id]) for node_id in m_node_ids)
+            push!(m_set,manifold.id)
         end
     end
 
-    mesh.edge_sets[set_name] = e_set
+    get_field(mesh,manifold_set_name)[set_name] = m_set
 end
+
+@inline add_edge_set!(mesh::Mesh,set_name,f::Function;check_unique= true)  = 
+                add_manifold_set!(mesh,set_name,f,Val(2);check_unique=check_unique)
+@inline add_face_set!(mesh::Mesh,set_name,f::Function;check_unique= true)  = 
+                add_manifold_set!(mesh,set_name,f,Val(3);check_unique=check_unique)
+@inline add_volume_set!(mesh::Mesh,set_name,f::Function;check_unique=true) = 
+                add_manifold_set!(mesh,set_name,f,Val(4);check_unique=check_unique)
+
 
 
 @kwdef struct ConstraintHandler{D,U,ET}

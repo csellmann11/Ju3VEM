@@ -5,8 +5,8 @@
 ###########################################################################
 
 """ 
-    mutable struct FlattenVecs{N,T} <: AbstractVector{T}
-        v::NTuple{N,Vector{T}} 
+    mutable struct FlattenVecs{N,T,V<:AbstractVector{T}} <: AbstractVector{T}
+        v::ApplyArray{T, 1, typeof(vcat), NTuple{N,V}}
     end
 FlattenVecs stores a statically known number of vectors. 
 Each vector can be resizes later on. 

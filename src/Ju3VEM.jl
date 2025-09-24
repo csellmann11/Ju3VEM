@@ -6,6 +6,7 @@ module VEMGeo
     # Core dependencies commonly used across files
     using StaticArrays
     using LinearAlgebra
+    using Octavian
     using Random
     using Statistics
     using FixedSizeArrays
@@ -106,11 +107,12 @@ module VEMUtils
     using FixedSizeArrays
     using ..VEMGeo
     import ..VEMGeo: FlattenVecs, iterate_volume_areas, iterate_element_edges
-    import ..VEMGeo: get_iterative_area_vertex_ids, getexp
+    import ..VEMGeo: get_iterative_area_vertex_ids, getexp, unit_sol_proj
     using Octavian
     using Bumper
     using SparseArrays
     using WriteVTK
+    using Static
 
     include("mesh.jl")
     include("face_projector.jl")
@@ -121,8 +123,9 @@ module VEMUtils
     include("VEMUtils/constraint_handler.jl")
     include("VEMUtils/apply.jl")
     include("VEMUtils/assembler.jl")
-    include("VEMUtils/vor_mesh.jl")
+    include("VEMUtils/mesh_utils.jl")
     include("VEMUtils/vtkexports.jl")
+    include("cached_arrays.jl")
 
     export 
         # Mesh and element types
@@ -132,8 +135,11 @@ module VEMUtils
         add_node_set!, add_edge_set!,
         # Face/volume projectors
         create_B_mat, create_D_mat, h1_projectors!, 
-        # Voronoi mesh
-        create_voronoi_mesh,
+        # Stretched matrices
+        stretch,
+        # Meshing utilities
+        create_rectangular_mesh, create_unit_rectangular_mesh,
+        create_voronoi_mesh, extrude_to_3d,
         # Local mapping
         NodeID2LocalID, create_node_mapping,
         # Volume assembly helpers
@@ -141,7 +147,7 @@ module VEMUtils
         # Dof handler
         DofHandler, get_dof, get_dofs!, get_dofs,
         # Cell values
-        CellValues, reinit!,get_n_cell_dofs,
+        CellValues, reinit!,get_n_cell_dofs,ElementBaseFunctions,
         # Constraint handler
         ConstraintHandler, add_dirichlet_bc!, add_neumann_bc!,
         # Apply
@@ -149,7 +155,10 @@ module VEMUtils
         # Assembler
         Assembler, local_assembly!, assemble!,
         # VTK exports
-        write_vtk
+        write_vtk,
+        # Cached arrays
+        CachedArray, CachedMatrix, CachedVector, DefCachedMatrix, DefCachedVector, setsize!
+
 end # module VEMUtils
 
 @reexport using .VEMUtils

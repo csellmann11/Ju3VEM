@@ -260,7 +260,7 @@
 
 function vtk_volume_helper(topo::Topology{D}, 
     volume::Volume{D},
-    area_vertices::Dict{Int,Vector{Int}}) where D
+    area_vertices) where D
 
     area_ids  = Int[]
     iterate_volume_areas(area_vertices,topo,volume.id) do area, area_vertices,_
@@ -289,6 +289,8 @@ function write_vtk(topo::Topology{D},
 
     raw_points = filter(is_active,get_nodes(topo))
 
+
+
     points = reduce(hcat,get_coords.(raw_points))
 
     if size(points,1) == 2 
@@ -298,11 +300,16 @@ function write_vtk(topo::Topology{D},
 
     node_map = Dict(
         get_id(node) => i for (i,node) in enumerate(raw_points))
-
+    # node_map = zeros(Int,get_nodes(topo) |> length)
+    # for (i,node) in enumerate(raw_points)
+    #     node_map[get_id(node)] = i
+    # end
+    
 
 
     edge_cells = [
         MeshCell(PolyData.Lines(), get.(Ref(node_map),get_edge_node_ids(topo, edge.id),nothing))
+        # @views MeshCell(PolyData.Lines(), node_map[get_edge_node_ids(topo, edge.id)])
         for edge in RootIterator{D,2}(topo)
     ]
     
@@ -310,6 +317,7 @@ function write_vtk(topo::Topology{D},
 
     area_vertices = Dict(area.id => 
             get.(Ref(node_map),get_iterative_area_vertex_ids(area, topo),nothing) 
+            # @views node_map[get_iterative_area_vertex_ids(area, topo)]
             for area in RootIterator{D,3}(topo))
 
 

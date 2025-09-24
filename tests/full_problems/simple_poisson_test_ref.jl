@@ -13,135 +13,102 @@ function rhs_fun(x)
 end
 
 # Grid parameters
-# nx = 30; ny = 30; nz = 30
 nx,ny,nz =  10,10,10
-# dx = 1/nx; dy = 1/ny; dz = 1/nz
 
-# function is_boundary(x)
-#     return x[1] == 0 || x[1] == 1 ||
-#     x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
-# end
-
-# x_coords = range(0, nx*dx, length=nx+1)
-# y_coords = range(0, ny*dy, length=ny+1)
-
-# coords = [SA[x,y] for x in x_coords, y in y_coords]
-
-# topo = Topology{2}()
-# add_node!.(coords, Ref(topo))
-
-# idxs = LinearIndices((nx+1, ny+1))
-
-# for I in CartesianIndices((nx, ny))
-#     i, j = Tuple(I)
-#     node_ids = [idxs[i,j],idxs[i+1,j],idxs[i+1,j+1],idxs[i,j+1]]
-#     add_area!(node_ids,topo)
-# end
-
-# mesh2d = Mesh(topo, StandardEl{1}())
 mesh2d = create_voronoi_mesh((0.0,0.0),(1.0,1.0),nx,ny,StandardEl{1},false)
 mesh   = extrude_to_3d(nz,mesh2d,1.0);
-
+# mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{1})
 
 n_element_old = length(RootIterator{4}(mesh.topo))
 
-for vol in RootIterator{4}(mesh.topo)
-    if true |> Bool
-        _refine!(vol,mesh.topo)
+@time "refinement" for i in 1:2
+    for vol in RootIterator{4}(mesh.topo)
+        if rand(0:1) |> Bool
+            _refine!(vol,mesh.topo)
+        end
     end
 end
 
 
 
-for vol in RootIterator{4}(mesh.topo)
-    if vol.id > n_element_old
-        _coarsen!(vol,mesh.topo) 
-    end
-end
 
-
-for vol in RootIterator{4}(mesh.topo)
-
-    if rand(0:1) |> Bool
-        _refine!(vol,mesh.topo)
-    end
-end
-
-
-
-n_element_new = length(RootIterator{4}(mesh.topo))
 
 mesh = Mesh(mesh.topo, StandardEl{1}())
 
+
+function is_boundary(x)
+    return x[1] == 0 || x[1] == 1 ||
+    x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
+end
 add_node_set!(mesh, "dirichlet", is_boundary)
 ch = ConstraintHandler{1}(mesh)
 
 cv = CellValues{1}(mesh)
 add_dirichlet_bc!(ch,cv.dh,"dirichlet",x -> 0.0)
 
-fdc = cv.facedata_col
+function build_kel!(
+    kelement::CachedMatrix{Float64},
+    ebf::ElementBaseFunctions,
+    hvol::Float64,
+    bc::StaticVector{3,Float64},
+    abs_volume::Float64)
 
-# for (id,fd) in fdc
-#     @show id
-#     @show fd.face_node_ids
-# end
+    # kelement = FixedSizeMatrix{Float64}(undef,length(ebf),length(ebf))
+    setsize!(kelement,(length(ebf),length(ebf)))
+    @no_escape begin
+        grad_vals = @alloc(SVector{3,Float64},length(ebf))
+        for (i,p_i) in enumerate(ebf)
+            grad_vals[i] = ∇x(p_i,hvol,zero(bc))
+        end
 
-
-function inner_prod(v1,v2,cv::CellValues)
-
-    @assert length(v1) == length(v2) "vectors must have the same length"
-    vd = cv.volume_data
-    hvol = vd.hvol
-
-    return sum(
-        compute_volume_integral_unshifted(v1[i]*v2[i],vd,hvol) 
-        for i in eachindex(v1,v2)
-    )
-end
-
-
-k_global,rhs_global = let 
-    ass = Assembler{Float64}(cv)
-    mesh = cv.mesh; topo = mesh.topo
-    base3d = get_base(BaseInfo{3,1,1}()).base
-    for element in RootIterator{4}(topo)
-        reinit!(element.id,cv)
-
-
-        hvol = cv.volume_data.hvol
-        abs_volume = cv.volume_data.integrals[1]
-
-        proj_s, proj = create_volume_vem_projectors(
-            element.id,mesh,cv.volume_data,cv.facedata_col,cv.vnm)
-
-        n_cell_dofs = get_n_cell_dofs(cv)
-
-        gelement = zeros(length(base3d),length(base3d))
-        for (i,m3d_i) in enumerate(base3d)
-            ∇m3d_i = ∇(m3d_i,hvol)
-            for (j,m3d_j) in enumerate(base3d)
-                ∇m3d_j = ∇(m3d_j,hvol)
-                gelement[i,j] = inner_prod(∇m3d_i,∇m3d_j,cv)
+        @inbounds for (i,∇pix) in enumerate(grad_vals)
+            for (j,∇pjx) in enumerate(grad_vals)
+                kelement[i,j] = abs_volume*dot(∇pix,∇pjx)
             end
         end
+    end
+    kelement
+end
 
+function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
+    ass = Assembler{Float64}(cv)
 
-        kelement = proj_s' * gelement * proj_s
-        rhs_element = zeros(n_cell_dofs)
-        for (node_id,i) in cv.vnm.map
-            x = cv.mesh[node_id]
-            rhs_element[i] = rhs_fun(x)/n_cell_dofs*abs_volume 
+    base3d = get_base(BaseInfo{3,1,1}())
+    rhs_element = DefCachedVector{Float64}()
+    kelement = DefCachedMatrix{Float64}()
+
+    for element in RootIterator{4}(cv.mesh.topo)
+        reinit!(element.id,cv)
+
+        hvol = cv.volume_data.hvol
+        bc = cv.volume_data.vol_bc
+        abs_volume = cv.volume_data.integrals[1]
+
+        
+        proj_s, proj = create_volume_vem_projectors(
+            element.id,cv.mesh,cv.volume_data,cv.facedata_col,cv.vnm)
+
+        ebf = ElementBaseFunctions(base3d,stretch(proj_s))
+    
+        kelement = build_kel!(kelement,ebf,hvol,bc,abs_volume)
+
+ 
+        setsize!(rhs_element,length(ebf))
+        fmean = f(bc)
+        for (i,base_fun) in enumerate(ebf)
+            rhs_element[i] = fmean*compute_volume_integral_unshifted(
+                base_fun,cv.volume_data,hvol
+            )
         end
 
-        stab = (I-proj)'*(I-proj)*hvol/4
+        # for (node_id,i) in cv.vnm.map
+        #     rhs_element[i] = f(cv.mesh[node_id])/length(ebf)*abs_volume 
+        # end
 
-        lmn = cv.vnm.map 
+        stab = (I-proj)'*(I-proj)*hvol/2
         kelement .+= stab
 
-
-
         local_assembly!(ass,kelement,rhs_element)
-    
 
 
     end
@@ -153,21 +120,16 @@ k_global,rhs_global = let
     kglobal, rhsglobal
 end
 
+@time "assembly time" k_global,rhs_global = assembly(cv,rhs_fun)
+
+
 
 apply!(k_global,rhs_global,ch)
-u = k_global \ rhs_global
+@time "solver" u = k_global \ rhs_global
+
 
 
 max_idx = argmax(u)
-if iseven(nx) && iseven(ny) && iseven(nz)
-    # @test mesh[max_idx] ≈ [0.5,0.5,0.5]
-    # @test u[max_idx] ≈ 1.0 atol = 0.1
-end
-# length(u)
-# length(mesh.nodes)
-
-
-# geometry_to_vtk(mesh.topo, 
-# "vtk/simple_poisson_test_ref")
+println("max u value is $(u[max_idx])")
 
 write_vtk(mesh.topo,"vtk/simple_poisson_test_ref", cv.dh, u)

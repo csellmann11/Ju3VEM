@@ -86,7 +86,9 @@ function create_volume_bmat(volume_id::Int,
     moment_idx_start_minus1 = sum(volume_node_mapping.counter[i] for i in 1:3)
 
 
-    bmat = zeros(length(base_3d),n_nodes)
+    # bmat = zeros(length(base_3d),n_nodes)
+    bmat = FixedSizeMatrix{Float64}(undef,length(base_3d),n_nodes)
+    bmat .= 0.0 
 
     if K == 1 
         bmat[1,:] .= 1/n_nodes
@@ -131,6 +133,7 @@ function create_volume_bmat(volume_id::Int,
             end
 
             sum(m3d.exp) < 2 && continue
+            
 
             ## add treatment of moments
             # calculates ∫ Δm * u dΩ = [f1,f2,f3] * ∫ [m,xx m,yy m,zz] * u dΩ
@@ -215,7 +218,7 @@ function _handle_volume_moments!(
             local_pos = get_local_id(ntl,moment_id)
             val = compute_volume_integral_unshifted(mj*mi,vol_data,hvol)
             dmat[local_pos,i] += val/abs_volume
-        end
+        end 
         
     end
     nothing
@@ -233,8 +236,8 @@ function create_volume_dmat(volume_id::Int,
     n_nodes = get_n_nodes(volume_node_mapping)
     base3d  = get_base(BaseInfo{3,K,1}())
 
-    dmat    = 
-            FixedSizeArray{Float64}(undef,n_nodes,length(base3d))
+    dmat    = FixedSizeMatrix{Float64}(undef,n_nodes,length(base3d))
+    dmat .= 0.0
 
     for (node_id,local_pos) in volume_node_mapping.map
 
@@ -258,6 +261,11 @@ function create_volume_dmat(volume_id::Int,
 end
 
 
+function LinearAlgebra.Matrix{T}(::Any,::Static.StaticInt{N},n::Int) where {T,N}
+    return Matrix{T}(undef,N,n)
+end
+
+
 function create_volume_vem_projectors(
     volume_id::Int,
     mesh::Mesh{3,ET}, 
@@ -272,16 +280,18 @@ function create_volume_vem_projectors(
     bcvol       = vol_data.vol_bc
 
     base3d = get_base(BaseInfo{3,K,1}()).base
-    # volume_projectors
     dmat = create_volume_dmat(volume_id,mesh,bcvol,hvol,facedata_col,vol_data,abs_volume,volume_node_mapping)
 
     bmat = create_volume_bmat(volume_id,mesh,bcvol,hvol,abs_volume,facedata_col,volume_node_mapping)
 
     gmat_inv = static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> inv
 
-    proj_s = gmat_inv   * bmat
-    proj   = dmat       * proj_s
 
+    proj_s = FixedSizeMatrix{Float64}(undef,size(gmat_inv,1),size(bmat,2))
+    proj   = FixedSizeMatrix{Float64}(undef,size(dmat,1),size(proj_s,2))
+    
+    Octavian.matmul!(proj_s,gmat_inv,bmat)
+    Octavian.matmul!(proj,dmat,proj_s)
     return proj_s, proj
 end
 
