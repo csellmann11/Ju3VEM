@@ -2,7 +2,7 @@
 
 julia_version = "1.11.4"
 manifest_format = "2.0"
-project_hash = "cb6422b8b923cdfd97cdce9c6626b372fd5c0752"
+project_hash = "9fea448dd0fe19435885f1d384fcf70b8543df16"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "60665b326b75db6517939d0e1875850bc4a54368"
@@ -607,6 +607,20 @@ deps = ["LinearAlgebra", "SpecialFunctions", "StaticArrays"]
 git-tree-sha1 = "fd923962364b645f3719855c88f7074413a6ad92"
 uuid = "442a2c76-b920-505d-bb47-c5924d526838"
 version = "1.0.2"
+
+[[deps.Ferrite]]
+deps = ["EnumX", "ForwardDiff", "LinearAlgebra", "NearestNeighbors", "OrderedCollections", "Preferences", "Reexport", "SparseArrays", "StaticArrays", "Tensors", "WriteVTK"]
+git-tree-sha1 = "569ab58080263a9e8f7870e093817e3d8edafcc7"
+uuid = "c061ca5d-56c9-439f-9c0e-210fe06d3992"
+version = "1.1.0"
+
+    [deps.Ferrite.extensions]
+    FerriteBlockArrays = "BlockArrays"
+    FerriteMetis = "Metis"
+
+    [deps.Ferrite.weakdeps]
+    BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
+    Metis = "2679e427-3c69-5b7f-982b-ece356f1e94b"
 
 [[deps.FileIO]]
 deps = ["Pkg", "Requires", "UUIDs"]
@@ -2077,6 +2091,18 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "1feb45f88d133a655e001435632f019a9a1bcdb6"
 uuid = "62fd8b95-f654-4bbd-a8a5-9c27f68ccd50"
 version = "0.1.1"
+
+[[deps.Tensorial]]
+deps = ["ForwardDiff", "LinearAlgebra", "StaticArrays", "TensorCore"]
+git-tree-sha1 = "92a2e6cec1658de382e564f31ab61d04c13741e7"
+uuid = "98f94333-fa9f-48a9-ad80-1c66397b2b38"
+version = "0.18.12"
+
+[[deps.Tensors]]
+deps = ["ForwardDiff", "LinearAlgebra", "PrecompileTools", "SIMD", "StaticArrays", "Statistics"]
+git-tree-sha1 = "399ec4c46786c47380121f8a6497c65b89f0573f"
+uuid = "48a634ad-e948-5137-8d70-aa71f2a747f4"
+version = "1.16.2"
 
 [[deps.TermInterface]]
 git-tree-sha1 = "d673e0aca9e46a2f63720201f55cc7b3e7169b16"

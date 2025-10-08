@@ -38,7 +38,7 @@ end
 function CellValues{U}(
     mesh::Mesh{D,ET}) where {D,U,K,ET<:ElType{K}}
 
-    dh = DofHandler{U}(mesh)
+    dh = DofHandler{U}(mesh) 
 
     vnm = NodeID2LocalID(;sizehint = 30) 
 
@@ -53,8 +53,6 @@ function CellValues{U}(
     V = typeof(first(values(facedata_col)).face_node_ids)
 
     return CellValues(mesh,vnm,facedata_col,volume_data,dh)
-    # return CellValues{D,U,ET,length(base),length(base),V}(
-    #     mesh,vnm,facedata_col,volume_data,dh)
 end
 
 function get_element_bc(cv::CellValues)
@@ -87,31 +85,100 @@ end
 
 @inline get_n_cell_dofs(cv::CellValues{D,U}) where {D,U} = U*get_n_nodes(cv.vnm)
 
+function get_cell_dofs(cv::CellValues{D,U}) where {D,U}
+    dofs = FixedSizeVector{Int}(undef, U*get_n_nodes(cv.vnm))
+    for (node_id,i) in cv.vnm.map
+        node_dofs = get_dofs(cv.dh,node_id)
+        for j in 1:U
+            idx = (i-1)*U + j
+            dofs[idx] = node_dofs[j]
+        end
+    end
+    return dofs
+end
 
 
 
 
-struct ElementBaseFunctions{D,O,U,L,M<:StretchedMatrix}
+"""
+    ElementBaseFunctions{D,O,U,L,M,V} <: AbstractVector{V}
+
+A vector-like container representing the projected element base functions for a VEM element.
+
+# Type Parameters
+- `D`: Spatial dimension of the element
+- `O`: Order of the polynomial basis
+- `U`: Number of unknowns per DOF (1 for scalar problems, >1 for vector-valued problems)
+- `L`: Length of the polynomial basis (derived from D and O)
+- `M`: Type of the projection matrix (must be a subtype of `StretchedMatrix`)
+- `V`: Element type, either `Polynomial{Float64,D,L}` for scalar problems or 
+       `SVector{U,Polynomial{Float64,D,L}}` for vector-valued problems
+
+# Fields
+- `base::PolynomialBase{D,O,U,L}`: The polynomial basis for the element
+- `Π_star::M`: The projection matrix (Π*) that maps DOF values to polynomial coefficients
+
+# Description
+This struct provides an abstract vector interface to access individual element base functions.
+Each base function is obtained by projecting a unit DOF Vector using the `Π_star` matrix.
+For scalar problems (U=1), each element is a single polynomial. For vector-valued problems 
+(U>1), each element is an SVector of polynomials.
+
+# Interface
+- `length(ebf)`: Returns the number of base functions (DOFs) for the element
+- `ebf[i]`: Returns the i-th projected base function as a Polynomial or SVector of Polynomials
+- Supports iteration through all base functions
+
+# Example Usage
+```julia
+# Access the i-th base function
+ϕ_i = element_base_functions[i]
+
+# Evaluate at a point
+value = ϕ_i(x)  # where x is a coordinate in the element's local coordinate system
+```
+
+# Constructor
+"""
+struct ElementBaseFunctions{D,
+    O,U,L,
+    M<:StretchedMatrix,
+    V<:Union{Polynomial{Float64,D,L},SVector{U,Polynomial{Float64,D,L}}}} <: AbstractVector{V}
+
     base::PolynomialBase{D,O,U,L}
     Π_star::M
-end
 
-function get_base_fun(ebf::ElementBaseFunctions, 
-    idx::Int)
-    return unit_sol_proj(ebf.base,idx,ebf.Π_star)
-end
 
-# iteration interface
-function Base.iterate(ebf::ElementBaseFunctions, state::Int=1)
-    N = size(ebf.Π_star, 2)
-    state > N && return nothing
-    return (get_base_fun(ebf, state), state + 1)
+    function ElementBaseFunctions(base::PolynomialBase{D,O,1,L}, Π_star::M) where {D,O,L,M}
+        new{D,O,1,L,M,Polynomial{Float64,D,L}}(base, Π_star)
+    end
+
+    function ElementBaseFunctions(base::PolynomialBase{D,O,U,L}, Π_star::M) where {D,O,U,L,M}
+        new{D,O,U,L,M,SVector{U,Polynomial{Float64,D,L}}}(base, Π_star)
+    end
 end
 
 Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
+Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M,V}}) where {D,O,U,L,M,V} = V
+Base.getindex(ebf::ElementBaseFunctions, idx::Int) = unit_sol_proj(ebf.base,idx,ebf.Π_star)
 
-Base.eltype(::Type{ElementBaseFunctions{D,O,1,L,M}}) where {D,O,L,M} =
-    Polynomial{Float64,D,L}  
 
-Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M}}) where {D,O,U,L,M} =
-    SVector{U,Polynomial{Float64,D,L}}
+# function get_base_fun(ebf::ElementBaseFunctions, 
+#     idx::Int)
+#     return unit_sol_proj(ebf.base,idx,ebf.Π_star)
+# end
+
+# # iteration interface 
+# function Base.iterate(ebf::ElementBaseFunctions, state::Int=1)
+#     N = size(ebf.Π_star, 2) 
+#     state > N && return nothing
+#     return (get_base_fun(ebf, state), state + 1)
+# end
+
+# Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
+
+# Base.eltype(::Type{ElementBaseFunctions{D,O,1,L,M}}) where {D,O,L,M} =
+#     Polynomial{Float64,D,L}  
+
+# Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M}}) where {D,O,U,L,M} =
+#     SVector{U,Polynomial{Float64,D,L}}

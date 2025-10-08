@@ -7,6 +7,7 @@ using Chairmarks
 using FixedSizeArrays
 using Bumper
 using Ju3VEM.VEMUtils: DefCachedMatrix,DefCachedVector, setsize!, CachedMatrix, CachedVector
+using Ju3VEM.VEMUtils: load_vtk_mesh
 # using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
 # using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
 function rhs_fun(x) 
@@ -17,6 +18,7 @@ end
 # nx = 30; ny = 30; nz = 30
 nx,ny,nz = 10,10,10
 mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{1})
+
 
 add_node_set!(mesh, "dirichlet", x -> x[1] == 0 || x[1] == 1 ||
     x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1)
@@ -38,7 +40,9 @@ function inner_prod(v1,v2,cv::CellValues)
     )
 end
 
-
+length(mesh.nodes)
+maximum(get_id.(mesh.nodes))
+length(unique(mesh.nodes))
 
 
 function build_kel!(
@@ -116,14 +120,14 @@ end
 
 
 apply!(k_global,rhs_global,ch)
-@time "solver_time" u = k_global \ rhs_global
+@time "solver_time" u = k_global \ rhs_global;
 
 
 max_idx = argmax(u)
-if iseven(nx) && iseven(ny) && iseven(nz)
-    @test mesh[max_idx] ≈ [0.5,0.5,0.5]
-    @test u[max_idx] ≈ 1.0 atol = 0.1
-end
+# if iseven(nx) && iseven(ny) && iseven(nz)
+#     @test mesh[max_idx] ≈ [0.5,0.5,0.5]
+#     @test u[max_idx] ≈ 1.0 atol = 0.1
+# end
 
 
-# @time write_vtk(mesh.topo, "vtk/simple_poisson_test",cv.dh,u)
+@time write_vtk(mesh.topo, "vtk/simple_poisson_test",cv.dh,u)

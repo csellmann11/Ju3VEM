@@ -149,6 +149,54 @@ end
 
 
 
+@testset "Test reversed node_order" begin
+
+    quad_nodes = [SA[0.0,0.0,0.0], SA[1.0,0.0,0.0], SA[1.0,1.0,1.0], SA[0.0,1.0,1.0]] .* 2 .+ Scalar(SA[1.0,1.0,1.0])
+
+    quad_nodes_rev = quad_nodes |> reverse
+
+    face_data = precompute_face_monomials(quad_nodes,Val(1))
+    face_data_rev = precompute_face_monomials(quad_nodes_rev,Val(1))
+
+    plane = face_data.plane
+    plane_rev = face_data_rev.plane
+
+    println("u of plane is ", plane.u)
+    println("u of plane_rev is ", plane_rev.u)
+
+    println("v of plane is ", plane.v)
+    println("v of plane_rev is ", plane_rev.v)
+
+    u_plane_2d = Ju3VEM.VEMGeo.project_to_2d_abs(plane.u,plane)
+    u_plane_2d_rev = Ju3VEM.VEMGeo.project_to_2d_abs(plane_rev.u,plane_rev)
+
+    v_plane_2d = Ju3VEM.VEMGeo.project_to_2d_abs(plane.v,plane)
+    v_plane_2d_rev = Ju3VEM.VEMGeo.project_to_2d_abs(plane_rev.v,plane_rev)
+
+    println("u_plane_2d is ", u_plane_2d)
+    println("u_plane_2d_rev is ", u_plane_2d_rev)
+
+    println("v_plane_2d is ", v_plane_2d)
+    println("v_plane_2d_rev is ", v_plane_2d_rev)
+
+    m3d = Monomial(1.0,SA[0,1,0])
+
+    Int = compute_face_integral(m3d,face_data,SA[0.0,0.0,0.0],2.0)
+    Int_rev = compute_face_integral(m3d,face_data_rev,SA[0.0,0.0,0.0],2.0)
+
+    @test Int ≈ Int_rev
+
+    m2d = Monomial(1.0,SA[0,1])
+    Int_2d = compute_face_integral(m2d,face_data,SA[0.0,0.0],2.0)
+    Int_2d_rev = compute_face_integral(m2d,face_data_rev,SA[0.0,0.0],2.0)
+
+    # @test Int_2d ≈ Int_2d_rev
+end
+
+
+
+
+
 
 
 

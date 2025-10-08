@@ -36,7 +36,7 @@ function get_dot_product_projection_coeffs(∇m::SVector{3,Monomial{Float64,3}},
         order = sum(∇mi.exp)
         idx = get_exp_to_idx_dict(∇mi.exp)
         coeffs += coeff_list[idx]*n[i]*∇mi.val/hv^order
-    end
+    end 
 
     return coeffs
 end
@@ -96,9 +96,9 @@ function create_volume_bmat(volume_id::Int,
 
     iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
    
-        face_normal      = get_outward_normal(bcvol,face_data)
-        ΠsL2             = face_data.ΠsL2
-        face_node_ids    = face_data.face_node_ids
+        face_normal,normal_sign = get_outward_normal(bcvol,face_data)
+        ΠsL2                    = face_data.ΠsL2
+        face_node_ids           = face_data.face_node_ids
 
         hf = face_data.dΩ.hf
 
@@ -120,15 +120,18 @@ function create_volume_bmat(volume_id::Int,
                 ∇m3d_dot_n = get_dot_product_projection_coeffs(
                     ∇m3d,face_normal,coeff_list,hvol)
 
+
                 integrated_vals[j] += compute_face_integral_m2d_time_3dcoeffs(
-                    m2d,face_data.dΩ,∇m3d_dot_n,hf)
+                    m2d,face_data.dΩ,∇m3d_dot_n,hf)#*normal_sign
             end
+           
 
             # takes the res of the prev loop v = ∫ m2d * (∇m3d ⋅ n) ∂Ω for all m2d in base_2d
             # computes ΠsL2 * v and directly stores the result in bmat
             for (nc,colv) in enumerate(eachcol(ΠsL2))
                 val = dot(colv,integrated_vals)
                 col_id  = get_local_id(volume_node_mapping,face_node_ids[nc])
+         
                 bmat[i,col_id] += val
             end
 
@@ -143,8 +146,11 @@ function create_volume_bmat(volume_id::Int,
                 i = get_exp_to_idx_dict(ddm.exp)
                 bmat[i,moment_idx_start_minus1+i] -= ddm.val*abs_volume 
             end
+            
         end
+        
     end
+   
     return bmat
 end
 
@@ -285,6 +291,7 @@ function create_volume_vem_projectors(
     bmat = create_volume_bmat(volume_id,mesh,bcvol,hvol,abs_volume,facedata_col,volume_node_mapping)
 
     gmat_inv = static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> inv
+    any(isnan.(gmat_inv)) && static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> display
 
 
     proj_s = FixedSizeMatrix{Float64}(undef,size(gmat_inv,1),size(bmat,2))

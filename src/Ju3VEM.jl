@@ -20,6 +20,7 @@ module VEMGeo
     using FastGaussQuadrature
     using LazyArrays
     using SparseArrays
+
     # Symbolics.RuntimeGeneratedFunctions.init(@__MODULE__)
 
     include("flatten_vecs.jl")
@@ -76,6 +77,9 @@ module VEMGeo
         derivative, ∇, ∂,
         get_base, get_bi_base, sol_proj, grad_sol_proj, get_ϕi, ∇p, ∇x, poly_grad,
 
+        # Stretched matrices
+        stretch,
+
         # Triangulation / geometry helpers
         triangulate_polygon, triangulate_planar_polygon3D,
         tetrahedralize_points_convex, tetrahedralize_volume_local_ids,
@@ -103,11 +107,13 @@ end # module VEMGeo
 
 module VEMUtils
     using StaticArrays
+    using Statistics
     using LinearAlgebra
     using FixedSizeArrays
     using ..VEMGeo
     import ..VEMGeo: FlattenVecs, iterate_volume_areas, iterate_element_edges
-    import ..VEMGeo: get_iterative_area_vertex_ids, getexp, unit_sol_proj
+    import ..VEMGeo: get_iterative_area_vertex_ids, getexp, unit_sol_proj, stretch
+    import ..VEMGeo: get_gauss_legendre, get_gauss_lobatto
     using Octavian
     using Bumper
     using SparseArrays
@@ -132,16 +138,15 @@ module VEMUtils
         Mesh, ElType, StandardEl, SerendipityEl,
         # Mesh accessors
         get_vertices, get_gauss_nodes, get_face_moments, get_volume_moments,
-        add_node_set!, add_edge_set!,
+        add_node_set!, add_edge_set!, add_face_set!,
         # Face/volume projectors
         create_B_mat, create_D_mat, h1_projectors!, 
-        # Stretched matrices
-        stretch,
+
         # Meshing utilities
         create_rectangular_mesh, create_unit_rectangular_mesh,
-        create_voronoi_mesh, extrude_to_3d,
+        create_voronoi_mesh, extrude_to_3d, load_vtk_mesh,
         # Local mapping
-        NodeID2LocalID, create_node_mapping,
+        NodeID2LocalID,
         # Volume assembly helpers
         create_volume_bmat, create_volume_vem_projectors,
         # Dof handler
@@ -162,5 +167,25 @@ module VEMUtils
 end # module VEMUtils
 
 @reexport using .VEMUtils
+
+include("StructMechanics/material_laws.jl")
+@reexport using .MaterialLaws
+
+
+import Tensorial 
+using Tensorial: ⊡₂
+using StaticArrays
+
+function Tensorial.:⊡₂(a::StaticArray,b::StaticArray)
+    res = Tensorial.Tensor(a) ⊡₂ Tensorial.Tensor(b)
+
+    if res isa Tensorial.Tensor
+        return SArray{Tuple{size(res)...}}(res.data)
+    else
+        return res
+    end
+end
+
+export ⊡₂
 
 end # module Ju3VEM

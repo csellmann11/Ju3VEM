@@ -86,7 +86,7 @@ function create_rectangular_mesh(
 	lx::Float64,ly::Float64,lz::Float64,
 	::Type{ElT}) where {ElT <: ElType}
 	
-	return create_rectangular_mesh(nx,ny,nz, (0.0,0.0), (lx,ly,lz), ElT)
+	return create_rectangular_mesh(nx,ny,nz, (0.0,0.0,0.0), (lx,ly,lz), ElT)
 end
 
 function create_unit_rectangular_mesh(
@@ -306,7 +306,7 @@ function remove_split_edges(poly_nodes::AbstractVector{Int},
 
 		area = 0.5 * abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
 
-		if area < 1e-10
+		if area < 1e-6
 			push!(rm, ip1)
 		end
 	end
@@ -315,4 +315,150 @@ function remove_split_edges(poly_nodes::AbstractVector{Int},
 				 for i in eachindex(poly_nodes) if i ∉ rm]
 
 	return new_nodes
+end
+
+"""
+    load_vtk_mesh(filename::String, ::Type{ElT}) where {ElT <: ElType}
+
+Load a VTK unstructured grid file and convert it to a custom Mesh structure.
+
+# Arguments
+- `filename::String`: Path to the VTK file
+- `::Type{ElT}`: Element type (e.g., StandardEl{1}, SerendipityEl{1})
+
+# Returns
+- `mesh::Mesh{3,ElT}`: 3D mesh structure
+
+# Example
+```julia
+mesh = load_vtk_mesh("mesh.vtk", StandardEl{1})
+```
+"""
+function load_vtk_mesh(filename::String, ::Type{ElT}) where {ElT <: ElType}
+    # Read the VTK file
+    lines = readlines(filename)
+    
+    # Find the POINTS section
+    points_start = findfirst(line -> occursin("POINTS", line), lines)
+    @assert points_start !== nothing "POINTS section not found in VTK file"
+    
+    # Parse number of points
+    points_line = lines[points_start]
+    n_points = parse(Int, split(points_line)[2])
+    
+    # Read point coordinates
+    points = Vector{SVector{3,Float64}}()
+    for i in (points_start+1):(points_start+n_points)
+        coords = parse.(Float64, split(lines[i]))
+        push!(points, SVector{3,Float64}(coords[1], coords[2], coords[3]))
+    end
+    
+    # Find the CELLS section
+    cells_start = findfirst(line -> occursin("CELLS", line), lines)
+    @assert cells_start !== nothing "CELLS section not found in VTK file"
+    
+    # Parse number of cells and total connectivity entries
+    cells_line = lines[cells_start]
+    n_cells, total_connectivity = parse.(Int, split(cells_line)[2:3])
+    
+    # Read cell connectivity
+    cells = Vector{Vector{Vector{Int}}}()  # Each cell contains multiple faces
+    line_idx = cells_start + 1
+    
+    for i in 1:n_cells
+        # Read all data for this cell (may span multiple lines)
+        cell_data = Int[]
+        current_line = lines[line_idx]
+        line_data = parse.(Int, split(current_line))
+        total_count = line_data[1]  # Total count of data entries (ignore for now)
+        n_faces = line_data[2]      # Number of faces
+        
+        # Add the rest of the first line (skip total_count and n_faces)
+        append!(cell_data, line_data[3:end])
+        
+        # Read additional lines if needed - continue until we have enough data
+        while true
+            # Calculate how much data we need: n_faces + sum of all face vertex counts
+            needed_data = n_faces
+            data_idx = 1
+            for face_idx in 1:n_faces
+                if data_idx > length(cell_data)
+                    break
+                end
+                n_face_vertices = cell_data[data_idx]
+                needed_data += n_face_vertices
+                data_idx += n_face_vertices + 1
+            end
+            
+            if length(cell_data) >= needed_data
+                break
+            end
+            
+            # Need more data - read next line
+            line_idx += 1
+            if line_idx > length(lines)
+                error("Unexpected end of file while parsing cell $i")
+            end
+            current_line = lines[line_idx]
+            line_data = parse.(Int, split(current_line))
+            append!(cell_data, line_data)
+        end
+        
+        
+        # Parse faces for this cell
+        cell_faces = Vector{Vector{Int}}()
+        data_idx = 1
+        
+        for face_idx in 1:n_faces
+            if data_idx > length(cell_data)
+                error("Not enough data for face $face_idx of cell $i")
+            end
+            
+            n_face_vertices = cell_data[data_idx]
+            if data_idx + n_face_vertices > length(cell_data)
+                error("Face $face_idx data incomplete for cell $i")
+            end
+            
+            face_vertices = cell_data[(data_idx+1):(data_idx+n_face_vertices)]
+            push!(cell_faces, face_vertices)
+            data_idx += n_face_vertices + 1
+        end
+        
+        push!(cells, cell_faces)
+        line_idx += 1
+    end
+    
+    # Find the CELL_TYPES section
+    types_start = findfirst(line -> occursin("CELL_TYPES", line), lines)
+    @assert types_start !== nothing "CELL_TYPES section not found in VTK file"
+    
+    # Read cell types
+    cell_types = Int[]
+    for i in (types_start+1):(types_start+n_cells)
+        push!(cell_types, parse(Int, lines[i]))
+    end
+    
+    # Create topology
+    topo = Topology{3}()
+    
+    # Add nodes to topology
+    for (i, point) in enumerate(points)
+        add_node!(point, topo, i)
+    end
+    
+    # Process cells (assuming all are polyhedra - VTK cell type 42)
+    for (cell_idx, cell_faces) in enumerate(cells)
+        if cell_types[cell_idx] == 42  # VTK_POLYHEDRON
+            # Convert face vertex indices to 1-based indexing (VTK uses 0-based)
+            faces_1based = [face_vertices .+ 1 for face_vertices in cell_faces]
+            
+            # Add volume with faces
+            add_volume!(faces_1based, topo)
+        else
+            @warn "Unsupported cell type $(cell_types[cell_idx]) for cell $cell_idx"
+        end
+    end
+    
+    # Create mesh
+    return Mesh(topo, ElT())
 end

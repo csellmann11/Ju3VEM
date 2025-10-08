@@ -284,7 +284,7 @@ const Vec3{T} = SVector{3,T}
 
 function get_plane_parameters(points::AbstractVector{<:StaticVector{3,T}}) where T
 
-    tol = sqrt(eps(T))
+    tol = 100*eps(T)
     o = points[1]
 
     e1 = points[2] - o
@@ -399,7 +399,16 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
 
     # Find 4 non-coplanar points to seed
     i1 = 1
-    i2 = 2 # assumes that all points are unique
+    # i2 = 2 # assumes that all points are unique
+    i2 = -1
+    for i in 2:N
+        dist = norm(points[i] - points[1])
+        if dist > sqrt(eps(T))
+            i2 = i
+            break
+        end
+    end
+    @assert i2 != -1 "Points appear to be collinear"
     # pick i3 not collinear
     i3 = -1
     for i in 3:N
@@ -418,13 +427,13 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     for i in 4:N
         if i != i1 && i != i2 && i != i3
             vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
-            if abs(vol) > sqrt(eps(T))
+            if abs(vol) > eps(T)*1e03
                 i4 = i
                 break
             end
         end
     end
-    @assert i4 != -1 "Points appear to be coplanar"
+    @assert i4 != -1 "Points appear to be coplanar. The points are $points"
 
     used = SA[i1,i2,i3,i4]
     # Ensure positive orientation for seed tet
@@ -457,7 +466,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
   
 
     #! This bound might be to small
-    max_tet_number = 2*length(points) - 7
+    max_tet_number = 5*length(points) #- 2
     tet_counter = 1
     tets = FixedSizeArray{NTuple{4,Int}}(undef, max_tet_number)
 

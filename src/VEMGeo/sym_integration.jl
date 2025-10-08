@@ -104,8 +104,8 @@ struct FaceIntegralData{D,L}
     bc::SVector{2,Float64} 
     plane::D2FaceParametrization{D}
  
-    integrals    ::SVector{L,Float64}
-end 
+    integrals::SVector{L,Float64}
+end  
  
 # function FaceIntegralData(hf::Float64,bc::SVector{2,Float64},
 #     plane::D2FaceParametrization{D},integrals::SVector{L,Float64}) where {D,L}
@@ -120,7 +120,7 @@ end
 
 struct FaceData{D,L,FV<:FlattenVecs{3,Int}} 
     face_node_ids::FV 
-    dΩ           ::FaceIntegralData{D,L}
+    dΩ           ::FaceIntegralData{D,L} 
     ΠsL2         ::FixedSizeMatrixDefault{Float64}
 end 
 @inline get_area(fd::FaceData) = get_area(fd.dΩ)
@@ -142,9 +142,9 @@ function get_outward_normal(bcvol,face_data::FaceData{3,L}) where {L}
     face_to_vol_center = bcvol - face_bc3d 
 
     if dot(face_to_vol_center,normal) < 0
-        return normal
+        return normal,1
     else
-        return -normal
+        return -normal,-1
     end
 end
 
@@ -317,7 +317,17 @@ function compute_face_integral_unshifted(m::Monomial{T,2},
     fd::FaceIntegralData{D,L},h::T = fd.hf) where {D,T,L}
     idx   = get_exp_to_idx_dict(m.exp)
     order = sum(m.exp)
-    return fd.integrals[idx]/(h^order)
+    return m.val*fd.integrals[idx]/(h^order)
+end
+
+function compute_face_integral_unshifted(p::Polynomial{T,2},
+    fd::FaceIntegralData{D,L},h::T = fd.hf) where {D,T,L}
+    integral = 0.0 
+    for (c,mbase) in zip(p.coeffs,p.base) 
+        m = mbase*c
+        integral += compute_face_integral_unshifted(m,fd,h)
+    end
+    return integral
 end
 
 
@@ -371,7 +381,7 @@ function precompute_volume_monomials(vol_id::Int,
 
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            normal = get_outward_normal(_some_point_inside,facedata)
+            normal = get_outward_normal(_some_point_inside,facedata)[1]
             geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
         end
     end
@@ -395,7 +405,7 @@ function precompute_volume_monomials(vol_id::Int,
         
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            normal = get_outward_normal(_some_point_inside,facedata)
+            normal = get_outward_normal(_some_point_inside,facedata)[1]
             integrals[i] += compute_face_integral(m_face*normal[1],dΩ,integral_center,1.0)#hvol)
         end
     end
@@ -425,6 +435,13 @@ function compute_volume_integral_unshifted(p::Polynomial,
         )
     end
     integral
+end
+
+function compute_volume_integral_unshifted(
+    v::SVector{U,<:Polynomial},
+    vol_data::VolumeIntegralData{L},h::T = vol_data.hvol) where {T,L,U}
+
+    return SVector{U}(compute_volume_integral_unshifted(v[i],vol_data,h) for i in 1:U)
 end
 
 

@@ -71,8 +71,18 @@ function get_unique_values(v::AbstractVector{<:AbstractVector{Int}})
 end
 
 
+function find_single_intersec(vecs::Vararg{AbstractVector{Int},N}; 
+    ids::AbstractVector{Int} = 1:N) where N
+    for a in vecs[first(ids)]
+        all(a in vecs[i] for i in @views ids[2:end]) && return a
+    end
+    return 0
+
+end
+
+
 function find_single_intersec(vecs_col::AbstractVector{<:AbstractVector{Int}},
-    ids::AbstractVector{Int})
+    ids::AbstractVector{Int} = 1:length(vecs_col))
     for a in vecs_col[first(ids)]
         all(a in vecs_col[i] for i in @views ids[2:end]) && return a
     end
@@ -92,10 +102,10 @@ end
 # Example:
     find_single_intersec([[1,2,3],[4,5,6],[1,2,3]]) == 1
 """
-function find_single_intersec(vecs::AbstractVector{<:AbstractVector{Int}}) 
-    return find_single_intersec(vecs,1:length(vecs))
+# function find_single_intersec(vecs::AbstractVector{<:AbstractVector{Int}}) 
+#     return find_single_intersec(vecs,1:length(vecs))
 
-end
+# end
 
 
 

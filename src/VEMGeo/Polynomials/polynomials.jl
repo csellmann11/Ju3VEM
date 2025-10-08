@@ -290,8 +290,8 @@ end
 
 function idx_rem_div(v, U)
     q = (v + U - 1) ÷ U
-    r = v % U   # always 0 ≤ r < U
-    return q, r + 1
+    r = mod1(v, U)   # always 0 ≤ r < U
+    return q, r 
 end
 
 function get_static_col(M::AbstractMatrix,
@@ -323,9 +323,9 @@ function unit_sol_proj(b::PolynomialBase{D,O,U,L},
 
 
     proj_col, v_idx = idx_rem_div(one_idx, U)
-    coeffs = get_static_col(Π_star.data, proj_col, Val(L))
+    coeffs          = get_static_col(Π_star.data, proj_col, Val(L))
 
-    p = Polynomial(coeffs, b.base)
+    p               = Polynomial(coeffs, b.base)
 
     if U == 1
         return p

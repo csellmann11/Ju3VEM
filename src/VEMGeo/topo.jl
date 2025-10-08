@@ -223,13 +223,30 @@ function add_area!(_node_ids::AbstractVector{Int},
     temp_id = length(area_dict) + 1
 
 
-    area = get!(area_dict, area_hash(_node_ids),
-        Area{D}(temp_id, parent_ref_level + 1, parent_id))
+    # Try to find area by hash (normal or reversed)
+    generated_hash = area_hash(_node_ids)
+    idx = OrderedCollections.ht_keyindex2(area_dict, generated_hash)
+    
+    if idx <= 0
+        # Not found with normal hash, try reversed
+        rev_hash = area_hash(reverse(_node_ids))
+        idx = OrderedCollections.ht_keyindex2(area_dict, rev_hash)
+    end
+    
+    # Create new area if not found
+    area_found = (idx > 0)
+    if !area_found
+        area_dict[generated_hash] = Area{D}(temp_id, parent_ref_level + 1, parent_id)
+        idx = temp_id
+    end
+    
+    area = area_dict.vals[idx]
 
  
     !is_active(area) && activate!(area, topo)
     id = area.id
-    id != temp_id && return area.id
+    # id != temp_id && return area.id
+    area_found && return area.id
 
     node_ids = get_area_node_ids(topo, id)
 
@@ -416,6 +433,44 @@ Base.length(r::RootIterator{D,Idx}) where {D,Idx} = num_roots(get_geo_vec(r.topo
 #############################################
 # Tree utils
 #############################################
+@kwdef mutable struct CustStack{T,V<:AbstractVector{T}} <: AbstractVector{T}
+    const stack::V
+    last ::Int = 0
+end
+
+Base.length(aq::CustStack) = aq.last
+Base.size(aq::CustStack) = (aq.last,)
+
+function Base.push!(aq::CustStack{T},entry::T) where T
+    aq.last += 1
+    @boundscheck (aq.last <= length(aq.stack))
+    aq.stack[aq.last] = entry 
+    nothing
+end
+
+
+function pop_last!(aq::CustStack) 
+    aq.last -= 1
+    return aq.stack[aq.last + 1]
+end
+
+Base.@propagate_inbounds function Base.getindex(aq::CustStack,i::Int) 
+    @boundscheck (i <= aq.last)
+    return aq.stack[i]
+end
+
+@inline Base.isempty(aq::CustStack) = aq.last == 0
+
+@inline function stack_to_fixed_size_vector(aq::CustStack{T}) where T
+    v = FixedSizeVector{T}(undef,length(aq))
+    for i in eachindex(v,aq)
+        v[i] = aq[i]
+    end
+    return v
+end
+
+
+
 """
     get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
         abs_ref_level::Int=typemax(Int)) where D
@@ -427,27 +482,68 @@ Get the node ids of the mesh of an area.
 - `topo::Topology{D}`: The topology to get the mesh node ids from.
 - `abs_ref_level::Int`: Does not go below this refinement level in the recursive search
 """
-function get_iterative_area_vertex_ids!(
-    vertex_ids::AbstractVector{Int},
-    area::Area{D}, topo::Topology{D},
-    abs_ref_level::Int=typemax(Int)) where D
+# function get_iterative_area_vertex_ids!(
+#     vertex_ids::AbstractVector{Int},
+#     area::Area{D}, topo::Topology{D},
+#     abs_ref_level::Int=typemax(Int)) where D
 
-    empty!(vertex_ids)
+#     empty!(vertex_ids)
+#     cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge)
+#     iterate_element_edges(topo, area.id, cond) do node_id, _, _
+#         push!(vertex_ids, node_id)
+#     end
+#     return nothing
+# end
+
+
+# function get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
+#     abs_ref_level::Int=typemax(Int)) where D
+
+#     vertex_ids = Int[]
+#     get_iterative_area_vertex_ids!(vertex_ids, area, topo, abs_ref_level)
+#     return vertex_ids
+# end
+
+
+
+
+function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int},
+    area_id::Int,
+    topo::Topology{D},
+    abs_ref_level::Int=typemax(Int)) where D
+    
     cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge)
-    iterate_element_edges(topo, area.id, cond) do node_id, _, _
+    iterate_element_edges(topo, area_id, cond) do node_id, _, _
         push!(vertex_ids, node_id)
     end
     return nothing
 end
 
-
-function get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
+function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int},
+    area::Area{D},
+    topo::Topology{D},
     abs_ref_level::Int=typemax(Int)) where D
-
-    vertex_ids = Int[]
-    get_iterative_area_vertex_ids!(vertex_ids, area, topo, abs_ref_level)
-    return vertex_ids
+    
+    get_iterative_area_vertex_ids!(vertex_ids, area.id, topo, abs_ref_level)
 end
+
+
+function get_iterative_area_vertex_ids(area_id::Int, 
+    topo::Topology{D},
+    abs_ref_level::Int=typemax(Int)) where D 
+
+ 
+    @no_escape begin
+        _vertex_ids = CustStack(stack = @alloc(Int,100)) 
+        get_iterative_area_vertex_ids!(_vertex_ids, area_id, topo, abs_ref_level)
+        stack_to_fixed_size_vector(_vertex_ids)
+    end
+end
+
+
+@inline get_iterative_area_vertex_ids(area::Area, 
+                    topo,abs_ref_level::Int=typemax(Int)) =       
+                        get_iterative_area_vertex_ids(area.id, topo, abs_ref_level)
 
 """
 iterate_element_edges(f::F1,topo::Topology{D},area_id::Int, cond::F2 = is_root)
@@ -458,29 +554,75 @@ Iterate over the edges of an element and apply a function on the edges
 - `f::Function`: The function to apply on the edges. f takes 
 the `node_id`, `edge_id` and `parent_edge_id` as arguments
 """
-function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F2=is_root) where {D,F1,F2}
-    edge_ids = topo.connectivity[2, 3][area_id]
+# function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F2=is_root) where {D,F1,F2}
+#     edge_ids = topo.connectivity[2, 3][area_id]
+#     edges = get_edges(topo)
+
+#     nodes_of_edges = get_edge_node_ids(topo)
+#     area_nodes = get_area_node_ids(topo, area_id)
+
+#     for (count, parent_edge_id) in enumerate(edge_ids)
+#         edge = edges[parent_edge_id]
+
+#         n1 = area_nodes[count]
+#         countp1 = get_next_idx(area_nodes, count)
+#         n2 = area_nodes[countp1]
+
+#         apply_f_on(cond, edge, edges, n2 < n1) do root_edge, rev_child_order
+#             # idx = rev_child_order ? 1 : 2
+#             idx = 1 + rev_child_order
+#             edge_id = root_edge.id 
+#             node_id = nodes_of_edges[edge_id][idx]
+#             fun(node_id, edge_id, parent_edge_id)
+#         end
+#     end
+# end
+
+
+function iterate_element_edges(fun::F1, 
+    topo::Topology{D}, 
+    area_id::Int, 
+    cond::F2=is_root) where {D,F1,F2}
+    
+    edge_ids = get_area_edge_ids(topo, area_id)
     edges = get_edges(topo)
 
     nodes_of_edges = get_edge_node_ids(topo)
-    area_nodes = get_area_node_ids(topo, area_id)
+    area_node_ids = get_area_node_ids(topo, area_id)
 
-    for (count, parent_edge_id) in enumerate(edge_ids)
-        edge = edges[parent_edge_id]
+    @no_escape begin
+        aq = CustStack(stack = @alloc(Int,100))
 
-        n1 = area_nodes[count]
-        countp1 = get_next_idx(area_nodes, count)
-        n2 = area_nodes[countp1]
+        last_node_id = first(area_node_ids)
+        for parent_edge_id in edge_ids
+            push!(aq,parent_edge_id)
 
-        apply_f_on(cond, edge, edges, n2 < n1) do root_edge, rev_child_order
-            # idx = rev_child_order ? 1 : 2
-            idx = 1 + rev_child_order
-            edge_id = root_edge.id 
-            node_id = nodes_of_edges[edge_id][idx]
-            fun(node_id, edge_id, parent_edge_id)
+            while !isempty(aq)
+                root_edge_id = pop_last!(aq)
+                root_edge = edges[root_edge_id]
+                n1guess = get_edge_node_ids(topo, root_edge_id)[1] 
+                rev = n1guess != last_node_id
+
+                @inbounds if cond(root_edge)
+                    node_id      = nodes_of_edges[root_edge_id][1+rev]
+                    last_node_id = nodes_of_edges[root_edge_id][2-rev]
+
+                    fun(node_id,root_edge_id,parent_edge_id)
+                    continue
+                end
+
+         
+                push!(aq,root_edge.childs[2-rev])
+                push!(aq,root_edge.childs[rev+1])
+            end
         end
     end
 end
+
+
+
+
+
 
 
 
@@ -568,19 +710,49 @@ the `root_area`, `facedata` and `topo` as arguments
 - `volume_id::Int`: The id of the volume to iterate over.
 - `cond::Function`: The condition to check if the area should be applied.
 """
-function iterate_volume_areas(fun::F1, 
-facedata_col::Dict{Int,FD}, 
-topo::Topology{D}, volume_id::Int, 
-cond::F2=is_root) where {D,F1,F2,FD} 
+# function iterate_volume_areas(fun::F1, 
+# facedata_col::Dict{Int,FD}, 
+# topo::Topology{D}, volume_id::Int, 
+# cond::F2=is_root) where {D,F1,F2,FD} 
 
-area_ids = get_volume_area_ids(topo, volume_id)
-areas = get_areas(topo)
-for area_id in area_ids
-    area = areas[area_id]
-    apply_f_on_unordered(cond, area, areas) do root_area
-        fun(root_area, facedata_col[root_area.id], topo)
+# area_ids = get_volume_area_ids(topo, volume_id)
+# areas = get_areas(topo)
+# for area_id in area_ids
+#     area = areas[area_id]
+#     apply_f_on_unordered(cond, area, areas) do root_area
+#         fun(root_area, facedata_col[root_area.id], topo)
+#     end
+# end 
+# end
+
+function iterate_volume_areas(fun::F1, 
+    facedata_col::Dict{Int,FD},
+    topo::Topology{D},
+    volume_id::Int,
+    cond::F2=is_root) where {D,F1,F2,FD}
+    
+    area_ids = get_volume_area_ids(topo, volume_id)
+    areas = get_areas(topo)
+    @no_escape begin
+        aq = CustStack(stack = @alloc(Int,1000))
+        
+        for area_id in area_ids
+            push!(aq,area_id)
+            while !isempty(aq)
+                root_area_id = pop_last!(aq)
+                root_area = areas[root_area_id]
+                
+                if cond(root_area)
+                    fun(root_area,facedata_col[root_area_id],topo)
+                    continue
+                end
+
+                for child_id in root_area.childs
+                    push!(aq,child_id)
+                end
+            end
+        end
     end
-end 
 end
 
 

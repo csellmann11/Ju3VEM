@@ -71,16 +71,16 @@ function _refine!(area::Area{D},topo::Topology{D}) where D
     area.is_root = false
     area_nodes = get_area_node_ids(topo,area_id)
 
-    for edgeid in get_area_edge_ids(topo,area_id)
-        edge = get_edges(topo)[edgeid] 
-        _refine!(edge,topo)
-    end
+
+
+ 
     
     was_once_refined = !isempty(area.childs)
-    # @show area.childs
+    
     if !was_once_refined #standard case
         mid_node_coords = mean(get_nodes(topo)[n_id] for n_id in area_nodes)
         new_node_id     = add_node!(mid_node_coords,topo)
+
     else
         new_node_id = find_single_intersec(get_area_node_ids(topo),area.childs)
         activate!(get_nodes(topo)[new_node_id])
@@ -94,21 +94,29 @@ function _refine!(area::Area{D},topo::Topology{D}) where D
         return new_node_id
     end
 
+    @no_escape begin
 
+        new_geo_nodes = @alloc(Int,2*length(area_nodes))
+        for (edge_count,edgeid) in enumerate(get_area_edge_ids(topo,area_id))
+            edge = get_edges(topo)[edgeid] 
+            edge_mid_node_id = _refine!(edge,topo)
+            idx = 2edge_count
+            new_geo_nodes[idx]   = edge_mid_node_id
+            new_geo_nodes[idx-1] = area_nodes[edge_count]
+        end
 
-    new_geo_nodes = get_iterative_area_vertex_ids(area,topo,
-            area.refinement_level+1)
+        # Create quadrilaterals by connecting barycenter to refined edge nodes
+        first_node = new_geo_nodes[end]
+        for i in eachindex(area_nodes)
+            # For first sub-area: use last node, otherwise use node at 2i-2
+            # Create quadrilateral: [first_node, edge_node1, edge_node2, barycenter]
+            quadrilateral_nodes = SVector(first_node, new_geo_nodes[2i-1], new_geo_nodes[2i], new_node_id)
 
-    # Create quadrilaterals by connecting barycenter to refined edge nodes
-    for i in eachindex(area_nodes)
-        # For first sub-area: use last node, otherwise use node at 2i-2
-        first_node = i == 1 ? new_geo_nodes[end] : new_geo_nodes[2i-2] 
-        
-        # Create quadrilateral: [first_node, edge_node1, edge_node2, barycenter]
-        quadrilateral_nodes = SVector(first_node, new_geo_nodes[2i-1], new_geo_nodes[2i], new_node_id)
-
-        narea_id = add_area!(quadrilateral_nodes, topo, area_id, area.refinement_level)
-        push!(area.childs, narea_id)
+            narea_id = add_area!(quadrilateral_nodes, topo, area_id, area.refinement_level)
+            push!(area.childs, narea_id)
+            first_node = new_geo_nodes[2i]
+        end
+        nothing
     end
     return new_node_id
 end
@@ -129,19 +137,18 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
   
     volume.is_root = false
     volume_nodes = get_volume_node_ids(topo,volume_id)
+    face_ids = get_volume_area_ids(topo, volume_id)
     face_to_center = MutableSmallDict{20,Int,Int}()
 
-    for area_id in get_volume_area_ids(topo,volume_id)
+    # Refine all faces and store their centers
+    for area_id in face_ids
         area = get_areas(topo)[area_id]
-        
         face_to_center[area_id] = _refine!(area,topo) 
     end
 
-    
     was_once_refined = !isempty(volume.childs)
    
     if !was_once_refined
-        # new_node_coords = mean(get_nodes(topo)[volume_nodes])
         new_node_coords = mean(get_nodes(topo)[n_id] for n_id in volume_nodes)
         new_node_id = add_node!(new_node_coords,topo)
     else
@@ -160,60 +167,51 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
         return new_node_id
     end
 
-    # Precompute face centers and edges
-    face_ids = get_volume_area_ids(topo, volume_id)
+    # For each corner node of the parent volume, create one child polyhedron
     fid_to_corner_edge_ids = MutableSmallDict{20,Int,Tuple{Int,Int}}()
     boundary_quad_ids = @MVector zeros(Int,40)
-    # For each corner node of the parent volume, create one child polyhedron
+    
     for corner_vid in volume_nodes
         boundary_quad_counter = 1
-        # Incident parent faces to this corner
-        # For each incident face, find the two parent edges touching the corner and their midpoints
-        for fid ∈ face_ids
-            corner_vid ∈ get_area_node_ids(topo, fid) || continue
-
-            quad_nodes = get_area_node_ids(topo, fid) 
-            if corner_vid ∈ quad_nodes
-                # push!(boundary_quads, quad_nodes)
-                for child_face_id in get_areas(topo)[fid].childs 
-                    child_quad_nodes = get_area_node_ids(topo, child_face_id)
-                    if corner_vid ∈ child_quad_nodes
-                        # push!(boundary_quads, child_quad_nodes)
-                        boundary_quad_ids[boundary_quad_counter] = child_face_id
-                        boundary_quad_counter += 1
-                    end 
-                end
-            end 
-        end
-
-        # Internal faces: one quad per corner-edge using the two adjacent face centers
-        # Collect all unique parent edges incident to the corner across incident faces
-
+        
+        # Single pass: collect boundary child faces AND build edge-to-faces mapping
         empty!(fid_to_corner_edge_ids)
-
+        
         for fid ∈ face_ids
-            corner_vid ∈ get_area_node_ids(topo, fid) || continue
+            face_nodes = get_area_node_ids(topo, fid)
+            corner_vid ∈ face_nodes || continue
+            
+            # Collect boundary child faces containing this corner
+            for child_face_id in get_areas(topo)[fid].childs 
+                if corner_vid ∈ get_area_node_ids(topo, child_face_id)
+                    boundary_quad_ids[boundary_quad_counter] = child_face_id
+                    boundary_quad_counter += 1
+                end 
+            end
+            
+            # Build edge-to-faces mapping for internal faces
             for eid in get_area_edge_ids(topo, fid)
-                if corner_vid in get_edge_node_ids(topo, eid)
-                    edge_faces = get(fid_to_corner_edge_ids,eid,(-1,-1))
-                    if edge_faces[1] == -1
-                        fid_to_corner_edge_ids[eid] = (fid,edge_faces[2])
-                    else
-                        fid_to_corner_edge_ids[eid] = (edge_faces[1],fid)
-                    end
+                if corner_vid ∈ get_edge_node_ids(topo, eid)
+                    edge_faces = get(fid_to_corner_edge_ids, eid, (-1,-1))
+                    fid_to_corner_edge_ids[eid] = edge_faces[1] == -1 ? (fid, edge_faces[2]) : (edge_faces[1], fid)
                 end
             end
         end
+        
+        # Create internal faces connecting corner to volume center
         for eid in keys(fid_to_corner_edge_ids)
-            mid = find_single_intersec(get_edge_node_ids(topo),get_edges(topo)[eid].childs)
-            
+            edge = get_edges(topo)[eid]
+            # mid = find_single_intersec(get_edge_node_ids(topo), get_edges(topo)[eid].childs)
+            nodes_child1 = get_edge_node_ids(topo,edge.childs[1])
+            nodes_child2 = get_edge_node_ids(topo,edge.childs[2])
+            mid = find_single_intersec(nodes_child1, nodes_child2)
             adj_faces = fid_to_corner_edge_ids[eid]
             @assert length(adj_faces) == 2 "Corner edge must belong to exactly two incident faces."
+            
             f1c = face_to_center[adj_faces[1]]
             f2c = face_to_center[adj_faces[2]]
-            boundary_quad_ids[boundary_quad_counter] = add_area!(SA[mid, f1c, new_node_id, f2c],topo,0,volume.refinement_level)
+            boundary_quad_ids[boundary_quad_counter] = add_area!(SA[mid, f1c, new_node_id, f2c], topo, 0, volume.refinement_level)
             boundary_quad_counter += 1
-            
         end
 
         nvolume_id = add_volume!(@view(boundary_quad_ids[1:boundary_quad_counter-1]), topo, volume_id, volume.refinement_level)
@@ -222,5 +220,4 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
 
     return new_node_id
 end
-
 

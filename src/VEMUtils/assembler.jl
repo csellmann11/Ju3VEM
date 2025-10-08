@@ -37,15 +37,18 @@ function get_n_entries(cv::CellValues{3,U},::Int) where U
         nvol_nodes[] = 0
         iterate_volume_areas(cv.facedata_col,cv.mesh.topo,element.id) do _, face_data, _
             n_face_nodes = length(face_data.face_node_ids)
-            nvol_nodes[] += (n_face_nodes*U)
+            nvol_nodes[] += (n_face_nodes)
         end
-        n_entries += (nvol_nodes[]*U)^2
+        n_entries += (div(nvol_nodes[],2)*U)^2
+        
     end
-    n_entries
+    n_entries[]
 end
 
 function Assembler{T}(cv::CellValues{D,U,ET},count = 1)  where {T<:Real,D,U,K,ET<:ElType{K}}
-    max_entries = get_n_entries(cv,K)
+    max_entries = get_n_entries(cv,1)
+
+
     rows = Vector{Int}(undef, max_entries)
     cols = Vector{Int}(undef, max_entries)
     vals = Vector{T}(undef, max_entries)

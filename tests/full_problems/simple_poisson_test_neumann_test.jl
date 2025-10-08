@@ -5,17 +5,14 @@ using Bumper
 using Random
 using BenchmarkTools
 using LinearAlgebra
-using Ju3VEM.VEMGeo: transform_topology_planar!,transform_topology_linear_elements!
-using Ju3VEM.VEMGeo: _refine!,_coarsen!,stretch
-using Ju3VEM.VEMUtils: write_vtk
-
+using Ju3VEM.VEMGeo: _refine!,_coarsen!
 
 include("../topo_tests/ana_error_compute.jl")
 # using Ju3VEM.VEMUtils: create_volume_vem_projectors, reinit!,get_n_cell_dofs
 # using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
 # using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
 
-const U = 2
+const U = 1
 
 function rhs_fun(x) 
     val = 3*π^2*sin(π*x[1])*sin(π*x[2])*sin(π*x[3])
@@ -30,14 +27,12 @@ function ana_u_poisson(x)
 end
 
 # Grid parameters
-nx,ny,nz =  20,20,20
+nx,ny,nz =  8,8,8
 # mesh2d = create_voronoi_mesh((0.0,0.0),(1.0,1.0),nx,ny,StandardEl{1},false)
 # mesh   = extrude_to_3d(nz,mesh2d,1.0);
-mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{1}) 
-
-n_element_old = length(RootIterator{4}(mesh.topo))
-
-
+# mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{1}) 
+mesh = load_vtk_mesh("tests/full_problems/voronoi4000_3d_with_lloyd.vtk", StandardEl{1});
+# mesh = load_vtk_mesh("tests/full_problems/voronoi4000_3d_no_lloyd.vtk", StandardEl{1});
 
 function rand_refinement(mesh,num_ref = 2)
     rng = Random.MersenneTwister(123)
@@ -51,24 +46,41 @@ function rand_refinement(mesh,num_ref = 2)
 end
 
 
-# @time "refinement" rand_refinement(mesh,1)
-
-@assert allunique(get_nodes(mesh.topo)) "Nodes are not unique, this is mostlikely a refinement error"
-
-
 
 mesh = Mesh(mesh.topo, StandardEl{1}())
 
 
-function is_boundary(x)
-    return x[1] == 0 || x[1] == 1 ||
-    x[2] == 0 || x[2] == 1 || x[3] == 0 || x[3] == 1
+function is_dirichlet_boundary(x)
+    return x[1] ≈ 0 || x[1] ≈ 1 ||
+                x[2] ≈ 0 || x[2] ≈ 1 || x[3] ≈ 0# || x[3] ≈ 1
 end
-add_node_set!(mesh, "dirichlet", is_boundary)
+
+function is_neumann_boundary(x)
+    return x[3] ≈ 1 
+end
+
+add_face_set!(mesh, "neumann", is_neumann_boundary)
+
+
+add_node_set!(mesh, "dirichlet", is_dirichlet_boundary)
 ch = ConstraintHandler{U}(mesh)
 
 cv = CellValues{U}(mesh)
 add_dirichlet_bc!(ch,cv.dh,"dirichlet",x -> ana_u_poisson(x))
+
+
+
+
+grad_u(x) = SA[
+    pi*cos(π*x[1])*sin(π*x[2])*sin(π*x[3]),
+    pi*sin(π*x[1])*cos(π*x[2])*sin(π*x[3]),
+    pi*sin(π*x[1])*sin(π*x[2])*cos(π*x[3])
+]
+
+
+grad_times_n(x) = SVector{U}(grad_u(x)[3] for i in 1:U)
+@time add_neumann_bc!(ch,cv.dh,cv.facedata_col,"neumann",grad_times_n)
+
 
 function build_kel!(
     kelement::CachedMatrix{Float64},
@@ -87,7 +99,7 @@ function build_kel!(
 
         @inbounds for (i,∇pix) in enumerate(grad_vals)
             for (j,∇pjx) in enumerate(grad_vals)
-                kelement[i,j] = abs_volume*dot(∇pix,∇pjx)
+                kelement.array[i,j] = abs_volume*dot(∇pix,∇pjx)
             end
         end
     end
@@ -122,7 +134,7 @@ function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
         setsize!(rhs_element,length(ebf))
         fmean = f(bc)
         for (i,base_fun) in enumerate(ebf)
-            rhs_element[i] = fmean ⋅ compute_volume_integral_unshifted(
+            rhs_element.array[i] = fmean ⋅ compute_volume_integral_unshifted(
                 base_fun,cv.volume_data,hvol
             )
         end
@@ -135,6 +147,7 @@ function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
 
 
     end
+
     kglobal, rhsglobal = assemble!(ass)
 
 
@@ -162,5 +175,7 @@ println("max u value is $(u[max_idx])")
 num_elemens = length(RootIterator{4}(mesh.topo)) 
 println("number of elements is $num_elemens")
 println("number of nodes is $(length(get_nodes(mesh.topo)))")
-l2_error = compute_error(ana_u_poisson,cv,u)
+@time l2_error = compute_error(ana_u_poisson,cv,u)
 println("l2 error is $l2_error")
+
+check_mesh(cv)
