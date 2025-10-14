@@ -3,6 +3,30 @@ include("monomials.jl")
 include("../stretched_matrices.jl")
 
 
+@inline get_base_len(D, O, U) = max(div(prod(O+1:O+D), factorial(D)) * U, 0)
+
+@generated function get_order(::Val{L}, ::Val{D}) where {L,D}
+    O = 0
+    while true
+        base_len = get_base_len(D, O, 1)
+        if base_len == L
+            return O
+        else
+            O += 1
+        end
+    end
+end
+
+
+
+
+# this is needed to avoid world age issues
+for D in 1:3, O in 1:6
+    L = get_base_len(D, O, 1)
+    get_order(Val(L), Val(D))
+end
+
+
 struct Polynomial{T,D,L} <: Number
     coeffs::SVector{L,T}
     base::SVector{L,Monomial{Float64,D}}
@@ -17,11 +41,57 @@ function Polynomial(coeffs::AbstractVector{T}, base::SVector{L,Monomial{Float64,
     return Polynomial{T,D,L}(SVector{L,T}(coeffs), base)
 end
 
-@inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = sum(c * b(x) for (c, b) in zip(p.coeffs, p.base))
+
+function get_order(::Type{Polynomial{T,D,L}}) where {T,D,L}
+    return get_order(Val(L), Val(D))
+end
+
+function get_order(p::Polynomial{T,D,L}) where {T,D,L}
+    return get_order(typeof(p))
+end
+
+
+
+@generated function poly_eval(p::Polynomial{T,D,L},
+    x::V,
+    bc::StaticVector{D,T},
+    h::T) where {T,D,L,V<:AbstractVector{T}}
+    O = get_order(p) 
+    base = get_base(BaseInfo{D,O,1}())
+    
+    expr = Expr(:call, :+, 0)
+    for i in 1:L
+        m = base[i]
+        inner_expr = Expr(:call, :*, :(p.coeffs[$i]))
+        for d in 1:D
+            m.exp[d] == 0 && continue
+            push!(inner_expr.args, :(x_scaled[$d]^$(m.exp[d])))  # Use x_scaled!
+        end
+        push!(expr.args, inner_expr)
+    end
+    
+    return quote
+        x_scaled = (x .- bc) / h
+        $expr
+    end
+end
+
+
+# @inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = sum(c * b(x) for (c, b) in zip(p.coeffs, p.base))
+@inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = poly_eval(p, x, zero(x), 1.0)
 
 @inline function (p::Polynomial{T,D,L})(x::V, bc::StaticVector{D,T}, h::T) where {T,D,L,V<:AbstractVector{T}}
-    return sum(c * b(x, bc, h) for (c, b) in zip(p.coeffs, p.base))
+    # return sum(c * b(x, bc, h) for (c, b) in zip(p.coeffs, p.base))
+    return poly_eval(p, x, bc, h)
 end
+
+
+
+
+
+
+
+
 
 
 
@@ -93,7 +163,7 @@ Generate the polynomial base for given dimensions `D`, order `O`, and unknowns `
     return :($base)
 end
 
-@inline get_base_len(D, O, U) = max(div(prod(O+1:O+D), factorial(D)) * U, 0)
+
 
 function get_bi_base(::BaseInfo{D,O,U}) where {D,O,U}
     get_base(BaseInfo{D,O,U}(), Val(true))
@@ -159,27 +229,7 @@ const BINOMSUMS = [sum(binomial(n + k - 1, k) for k in 0:d) for n in 1:MAXN, d i
 end
 
 
-@generated function get_order(::Val{L}, ::Val{D}) where {L,D}
-    O = 0
-    while true
-        base_len = get_base_len(D, O, 1)
-        if base_len == L
-            return O
-        else
-            O += 1
-        end
-    end
-end
 
-function get_order(p::Polynomial{T,D,L}) where {T,D,L}
-    return get_order(Val(L), Val(D))
-end
-
-# this is needed to avoid world age issues
-for D in 1:3, O in 1:6
-    L = get_base_len(D, O, 1)
-    get_order(Val(L), Val(D))
-end
 
 
 
@@ -290,7 +340,7 @@ end
 
 function idx_rem_div(v, U)
     q = (v + U - 1) ÷ U
-    r = mod1(v, U)   # always 0 ≤ r < U
+    r = mod1(v, U)   
     return q, r 
 end
 
@@ -364,27 +414,82 @@ end
 
 
 
-function poly_grad(p::Polynomial{T,D,L}, h::T) where {T,D,L}
-    O = get_order(p)
-    grad_base = get_base(BaseInfo{D,O - 1,1}())
-    vL = Val(length(grad_base))
+# function poly_grad(p::Polynomial{T,D,L}, h::T) where {T,D,L}
+#     O = get_order(p)
+#     grad_base = get_base(BaseInfo{D,O - 1,1}())
+#     vL = Val(length(grad_base))
 
-    @no_escape begin
-        grad_coeffs = @alloc(T,D,length(grad_base))
-        grad_coeffs .= zero(T)
+#     @no_escape begin
+#         grad_coeffs = @alloc(T,D,length(grad_base))
+#         grad_coeffs .= zero(T)
      
-        for i in 2:L
-            m = p.coeffs[i] * p.base[i]
-            ∇m = ∇(m, h)
-            for d in 1:D
-                exp = getexp(∇m[d])
-                val = getval(∇m[d])
-                val == zero(T) && continue
-                idx = get_exp_to_idx_dict(exp)
-                grad_coeffs[d,idx] += val
+#         for i in 2:L 
+#             m = p.coeffs[i] * p.base[i]
+#             ∇m = ∇(m, h)
+#             for d in 1:D
+#                 exp = getexp(∇m[d])
+#                 val = getval(∇m[d])
+#                 val == zero(T) && continue
+#                 idx = get_exp_to_idx_dict(exp)
+#                 grad_coeffs[d,idx] += val
+#             end
+#         end
+#         SVector{D}(Polynomial(get_static_row(grad_coeffs,i,vL), grad_base.base) for i in 1:D)
+#     end
+# end
+
+@generated function poly_grad(p::Polynomial{T,D,L}, h::T) where {T,D,L}
+    O = get_order(p)
+    base = get_base(BaseInfo{D,O,1}())
+    grad_base = get_base(BaseInfo{D,O-1,1}()).base
+    grad_L = length(grad_base)
+    
+    # Precompute contribution map at compile time
+    # contributions[d][grad_idx] = [(poly_idx, factor), ...]
+    contributions = [Vector{Tuple{Int,typeof(base[1].val)}}[] for _ in 1:D]
+    for _ in 1:grad_L
+        for d in 1:D
+            push!(contributions[d], Tuple{Int,typeof(base[1].val)}[])
+        end
+    end
+    
+    for i in 2:L  # Skip constant term (index 1)
+        m = base[i]
+        for d in 1:D
+            m.exp[d] == 0 && continue
+            
+            # Compute new exponent after differentiation
+            # new_exp = copy(m.exp)
+            # new_exp[d] -= 1
+            new_exp = setindex(m.exp, m.exp[d] - 1, d)
+            coeff_factor = m.val * m.exp[d]
+            
+            # Find index in gradient base
+            grad_idx = findfirst(gm -> all(gm.exp .== new_exp), grad_base)
+            grad_idx === nothing && continue
+            
+            push!(contributions[d][grad_idx], (i, coeff_factor))
+        end
+    end
+    
+    # Generate code for each gradient component
+    grad_poly_exprs = []
+    for d in 1:D
+        coeff_exprs = []
+        for grad_idx in 1:grad_L
+            if isempty(contributions[d][grad_idx])
+                push!(coeff_exprs, :(zero(T)))
+            else
+                terms = [:(p.coeffs[$i] * $(factor)) for (i, factor) in contributions[d][grad_idx]]
+                push!(coeff_exprs, Expr(:call, :+, terms...))
             end
         end
-        SVector{D}(Polynomial(get_static_row(grad_coeffs,i,vL), grad_base.base) for i in 1:D)
+        push!(grad_poly_exprs, :(Polynomial(SVector{$grad_L,T}($(coeff_exprs...)) / h, grad_base)))
+    end
+    
+    return quote
+        grad_base = get_base(BaseInfo{$D,$(O-1),1}()).base
+        SVector{$D}($(grad_poly_exprs...))
     end
 end
 

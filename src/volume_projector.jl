@@ -3,7 +3,9 @@ using ..VEMGeo: project_to_3d_flat, compute_face_integral_coeffs!
 
 
 function precompute_base_projection_coeffs(::BaseInfo{3,O},
-    dΩ::FaceIntegralData,bc_vol::SVector{3,Float64}) where {O}
+    dΩ::FaceIntegralData,
+    bc_vol::SVector{3,Float64},
+    hvol::Float64) where {O}
 
 
     base    = get_base(BaseInfo{3,O,1}()).base 
@@ -18,7 +20,9 @@ function precompute_base_projection_coeffs(::BaseInfo{3,O},
             vec .= 0.0 
             compute_face_integral_coeffs!(vec,m,dΩ,bc_vol)
 
-            coeff_list[i] = SVector{length(base2d),Float64}(vec)
+            order = sum(m.exp)
+
+            coeff_list[i] = SVector{length(base2d),Float64}(vec)/hvol^order
         end
     end
 
@@ -27,15 +31,14 @@ end
 
 function get_dot_product_projection_coeffs(∇m::SVector{3,Monomial{Float64,3}}, 
     n::SVector{3,Float64},
-    coeff_list::SVector{L,<:SVector},hv) where {L} 
+    coeff_list::SVector{L,<:SVector}) where {L} 
 
 
     coeffs = zero(eltype(coeff_list))
 
     for (i,∇mi) in enumerate(∇m)
-        order = sum(∇mi.exp)
         idx = get_exp_to_idx_dict(∇mi.exp)
-        coeffs += coeff_list[idx]*n[i]*∇mi.val/hv^order
+        coeffs += coeff_list[idx]*n[i]*∇mi.val
     end 
 
     return coeffs
@@ -54,18 +57,16 @@ function compute_face_integral_m2d_time_3dcoeffs(m2d::Monomial{T,2},
     order2 = sum(m2d.exp)
     full_base = get_base(BaseInfo{2,6,1}()).base
 
- 
+    λ = hf^order2
     ∫m = zero(T)
-    for i in eachindex(coeffs)
+    for i in eachindex(coeffs) 
         ci = coeffs[i]
-        new_exp   = m2d.exp + full_base[i].exp 
+        new_exp   = m2d.exp + full_base[i].exp  
         new_coeff = m2d.val*ci 
  
         idx = get_exp_to_idx_dict(new_exp)
-        ∫m += new_coeff*fd.integrals[idx]
+        ∫m += new_coeff*fd.integrals[idx]/λ
     end
-    ∫m/(hf^order2)
-
     return ∫m
 end
 
@@ -86,31 +87,30 @@ function create_volume_bmat(volume_id::Int,
     moment_idx_start_minus1 = sum(volume_node_mapping.counter[i] for i in 1:3)
 
 
-    # bmat = zeros(length(base_3d),n_nodes)
     bmat = FixedSizeMatrix{Float64}(undef,length(base_3d),n_nodes)
     bmat .= 0.0 
 
     if K == 1 
         bmat[1,:] .= 1/n_nodes
+    else 
+        bmat[1,moment_idx_start_minus1+1] = 1.0
     end
 
     iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
    
-        face_normal,normal_sign = get_outward_normal(bcvol,face_data)
+        face_normal,_ = get_outward_normal(bcvol,face_data)
         ΠsL2                    = face_data.ΠsL2
         face_node_ids           = face_data.face_node_ids
 
         hf = face_data.dΩ.hf
 
         coeff_list = precompute_base_projection_coeffs(BaseInfo{3,K-1,1}(),
-                        face_data.dΩ,bcvol)
+                        face_data.dΩ,bcvol,hvol)
 
         integrated_vals = MVector{length(base_2d),Float64}(undef)
         for (i,m3d) in enumerate(base_3d)
             i == 1 && continue # gradient of constant is zero
-            ∇m3d = ∇(m3d,hvol)
-            integrated_vals .= 0.0
-
+            ∇m3d = ∇(m3d,hvol) 
 
             # the first loop computes ∫ m2d * (∇m3d ⋅ n) ∂Ω
             # for this (∇m3d ⋅ n) is transformed into a 2d polynomial defined on the face
@@ -118,42 +118,69 @@ function create_volume_bmat(volume_id::Int,
 
 
                 ∇m3d_dot_n = get_dot_product_projection_coeffs(
-                    ∇m3d,face_normal,coeff_list,hvol)
+                    ∇m3d,face_normal,coeff_list)
 
 
-                integrated_vals[j] += compute_face_integral_m2d_time_3dcoeffs(
-                    m2d,face_data.dΩ,∇m3d_dot_n,hf)#*normal_sign
+                integrated_vals[j] = compute_face_integral_m2d_time_3dcoeffs(
+                    m2d,face_data.dΩ,∇m3d_dot_n,hf)
             end
            
 
             # takes the res of the prev loop v = ∫ m2d * (∇m3d ⋅ n) ∂Ω for all m2d in base_2d
             # computes ΠsL2 * v and directly stores the result in bmat
             for (nc,colv) in enumerate(eachcol(ΠsL2))
-                val = dot(colv,integrated_vals)
-                col_id  = get_local_id(volume_node_mapping,face_node_ids[nc])
-         
-                bmat[i,col_id] += val
+
+                col_id          = get_local_id(volume_node_mapping,face_node_ids[nc])
+                bmat[i,col_id] += dot(colv,integrated_vals)
             end
 
-            sum(m3d.exp) < 2 && continue
-            
-
-            ## add treatment of moments
-            # calculates ∫ Δm * u dΩ = [f1,f2,f3] * ∫ [m,xx m,yy m,zz] * u dΩ
-            for d in 1:3 
-                ddm = ∂(m3d,hvol,d,d)
-                ddm.val == zero(ddm.val) && continue
-                i = get_exp_to_idx_dict(ddm.exp)
-                bmat[i,moment_idx_start_minus1+i] -= ddm.val*abs_volume 
-            end
             
         end
-        
+    end
+
+    ## volume moments
+    for i in 5:length(base_3d)
+        m3d = base_3d[i]
+        # calculates ∫ Δm * u dΩ = [f1,f2,f3] * ∫ [m,xx m,yy m,zz] * u dΩ
+        for d in 1:3 
+            ddm     = ∂(m3d,hvol,d,d)
+            ddm.val == zero(ddm.val) && continue
+            idx     = get_exp_to_idx_dict(ddm.exp)
+            bmat[i,moment_idx_start_minus1+idx] -= ddm.val*abs_volume 
+        end
     end
    
     return bmat
 end
 
+
+function manual_K2_gmat(vol_data::VolumeIntegralData,hvol::Float64,abs_volume::Float64)
+
+    base3d = get_base(BaseInfo{3,2,1}()).base
+    
+
+    gmat = FixedSizeMatrix{Float64}(undef,length(base3d),length(base3d))
+
+    for (i,mi) in enumerate(base3d)
+        i == 1 && continue
+        ∇mi = ∇(mi,hvol)
+        for (j,mj) in enumerate(base3d)
+            j == 1 && continue
+            ∇mj = ∇(mj,hvol)
+
+            gmat[i,j] = sum(
+                compute_volume_integral_unshifted(∇mi[k]*∇mj[k],vol_data,hvol) for k in 1:3
+            )
+        end
+    end
+
+    for (i,mi) in enumerate(base3d)
+        gmat[1,i] = compute_volume_integral_unshifted(mi,vol_data,hvol)/abs_volume
+    end
+    return gmat
+    
+
+end
 
 
 function _is_vertex_like_node(id::Int,mesh::Mesh)::Bool 
@@ -171,7 +198,8 @@ function _handle_face_moments!(
     bc_vol::SVector{3,Float64},
     facedata_col::Dict{Int,<:FaceData},
     ntl,
-    vol_id
+    vol_id,
+    hvol
 ) where {K,ET<:ElType{K}}
 
     topo = mesh.topo
@@ -183,21 +211,26 @@ function _handle_face_moments!(
         face_moment_ids = mesh.int_coords_connect[3][face.id]
 
         # gets for all 3d monomials the coeffs when expressed in 2d face basis
-        face_ceoffs = precompute_base_projection_coeffs(
-            BaseInfo{3,K,1}(),facedata.dΩ,bc_vol
+        face_coeffs = precompute_base_projection_coeffs(
+            BaseInfo{3,K,1}(),facedata.dΩ,bc_vol,hvol
         )
 
-        # the dofs are now \int m3di * m2dj d \Omega for all m3di and m2dj
-        for (i,coeffs3d) in enumerate(face_ceoffs)
+        # the dofs are now \int m3di * m2dj dΓ for all m3di and m2dj
+        for (i,coeffs3d) in enumerate(face_coeffs)
             for (moment_id,mi) in zip(face_moment_ids,mombase2d)
+
                 local_pos = get_local_id(ntl,moment_id)
-                int       = compute_face_integral_m2d_time_3dcoeffs(
+
+
+                # ∫ pi(moment_j(x)) * m2dj(x) dΓ
+                int = compute_face_integral_m2d_time_3dcoeffs(
                     mi,facedata.dΩ,coeffs3d,get_hf(facedata)
                 )
+
+
                 dmat[local_pos,i] += int/get_area(facedata.dΩ)
-            end
-             
-        end
+            end 
+        end 
     end
     nothing
 end
@@ -216,7 +249,7 @@ function _handle_volume_moments!(
     mombase3d = get_base(BaseInfo{3,K-2,1}()).base
     moment_ids = mesh.int_coords_connect[4][vol_id]
 
-
+ 
     for (i,mi) in enumerate(base3d)
         for (j,mj) in enumerate(mombase3d)
         
@@ -238,26 +271,29 @@ function create_volume_dmat(volume_id::Int,
     vol_data::VolumeIntegralData,abs_volume::Float64,
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
+    hvol = vol_data.hvol
+    bcvol = vol_data.vol_bc
+    abs_volume = vol_data.integrals[1]
+
  
     n_nodes = get_n_nodes(volume_node_mapping)
     base3d  = get_base(BaseInfo{3,K,1}())
 
     dmat    = FixedSizeMatrix{Float64}(undef,n_nodes,length(base3d))
-    dmat .= 0.0
-
+    dmat   .= 0.0
+ 
     for (node_id,local_pos) in volume_node_mapping.map
 
         !_is_vertex_like_node(node_id,mesh) && continue
 
         for (i,m) in enumerate(base3d)
-            x = (mesh[node_id] - bcvol)/hvol
-            dmat[local_pos,i] = m(x)
+            dmat[local_pos,i] = m(mesh[node_id],bcvol,hvol)
         end
     end
 
 
     _handle_face_moments!(
-        dmat,mesh,bcvol,facedata_col,volume_node_mapping,volume_id
+        dmat,mesh,bcvol,facedata_col,volume_node_mapping,volume_id,hvol
     )
     _handle_volume_moments!(
         dmat,base3d,mesh,volume_id,volume_node_mapping,hvol,vol_data,abs_volume
@@ -289,15 +325,13 @@ function create_volume_vem_projectors(
     dmat = create_volume_dmat(volume_id,mesh,bcvol,hvol,facedata_col,vol_data,abs_volume,volume_node_mapping)
 
     bmat = create_volume_bmat(volume_id,mesh,bcvol,hvol,abs_volume,facedata_col,volume_node_mapping)
-
-    gmat_inv = static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> inv
-    any(isnan.(gmat_inv)) && static_matmul(bmat,dmat,Val((length(base3d),length(base3d)))) |> display
+    gmat = static_matmul(bmat,dmat,Val((length(base3d),length(base3d))))
 
 
-    proj_s = FixedSizeMatrix{Float64}(undef,size(gmat_inv,1),size(bmat,2))
+    proj_s = FixedSizeMatrix{Float64}(undef,size(gmat,1),size(bmat,2))
     proj   = FixedSizeMatrix{Float64}(undef,size(dmat,1),size(proj_s,2))
     
-    Octavian.matmul!(proj_s,gmat_inv,bmat)
+    Octavian.matmul!(proj_s,inv(gmat),bmat)
     Octavian.matmul!(proj,dmat,proj_s)
     return proj_s, proj
 end

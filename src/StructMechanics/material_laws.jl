@@ -56,28 +56,28 @@ module MaterialLaws
     export Helmholtz
 
     @inline function eval_psi_fun(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars) where {U,D}
+        pars = h.pars...) where {U,D}
         @assert h.shape == (U,D) "argument shape mismatch"
         psi = h.f(∇u,pars...)
         return psi
     end
 
     @inline function eval_gradient(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars) where {U,D}
+        pars = h.pars...) where {U,D}
         @assert h.shape == (U,D) "argument shape mismatch"
         grad = SMatrix{Tuple{U,D}}(h.g(∇u,pars...)...)
         return grad
     end
 
     @inline function eval_hessian(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars) where {U,D}
+        pars = h.pars...) where {U,D}
         @assert h.shape == (U,D) "argument shape mismatch"
         hess = SArray{Tuple{U,D,U,D}}(h.h(∇u,pars...)...)
         return hess
     end
 
     @inline function eval_gradient_and_hessian(h::Helmholtz,
-        ∇u::SMatrix,pars = h.pars)
+        ∇u::SMatrix,pars = h.pars...)
         grad = eval_gradient(h,∇u,pars)
         hess = eval_hessian(h,∇u,pars)
         return grad,hess
@@ -104,7 +104,7 @@ module MaterialLaws
         return W 
     end
 
-    @inline function Ψpoisson(∇u)
+    @inline function Ψpoisson(∇u,pars...)
         energy = ∇u ⋅ ∇u
         return 1/2 * energy
     end

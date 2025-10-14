@@ -114,7 +114,7 @@ function TriangleQuadRule(::Type{T}, order::Int) where {T}
     points = Vector{SVector{2, T}}(undef, n_points)
 
     for p in axes(data, 1)
-        # points[p] = SVector{2, T}(@ntuple $dim i -> data[p, i])
+
         points[p] = SVector{2, T}(data[p, 1], data[p, 2])
     end
     weights = T.(data[:, 3])

@@ -85,11 +85,37 @@ using Ju3VEM.VEMUtils: _create_facedata_col
     @show Ju3VEM.VEMGeo.get_exp_to_idx_dict(mi.exp)
     isym = compute_volume_integral_unshifted(mi, vol_data,1.0)
     inum = integrate_polynomial_over_volume(mi, vol_id, topo, ft)
+
     @show isym
-    @show inum
-    @show inum/isym
-    @show isym/inum
-    # @test isapprox(isym, inum; rtol=1e-12, atol=1e-12)
+    @test isym ≈ inum atol=1e-12
+
+
+
+
+    h = sqrt(3)
+
+    # integration of (x - bc)^2/h^2 = (x^2 - 2*x*bc + bc^2)/h^2
+    m1 = Monomial(1.0, SVector(2,0,0))/h^2
+    m2 = Monomial(-2.0*bc[1], SVector(1,0,0))/h^2
+    m3 = Monomial(bc[1]^2, SVector(0,0,0))/h^2
+
+    i1 = integrate_polynomial_over_volume(m1, vol_id, topo, ft)
+    i2 = integrate_polynomial_over_volume(m2, vol_id, topo, ft)
+    i3 = integrate_polynomial_over_volume(m3, vol_id, topo, ft)
+
+    full_integral = i1 + i2 + i3
+
+    @show full_integral
+
+
+    vol_data = precompute_volume_monomials(1, mesh.topo, fdc, Val(2))
+
+    # m is assumed to be scaled for the integration over the volume
+    m = Monomial(1.0, SVector(2,0,0))
+    isym = compute_volume_integral_unshifted(m, vol_data,h)
+
+    @test isym ≈ full_integral atol=1e-12
+ 
 
 end
 

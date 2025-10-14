@@ -159,6 +159,7 @@ struct ElementBaseFunctions{D,
 end
 
 Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
+Base.size(ebf::ElementBaseFunctions) = (size(ebf.Π_star, 2),)
 Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M,V}}) where {D,O,U,L,M,V} = V
 Base.getindex(ebf::ElementBaseFunctions, idx::Int) = unit_sol_proj(ebf.base,idx,ebf.Π_star)
 

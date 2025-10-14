@@ -145,6 +145,8 @@ module VEMUtils
         # Meshing utilities
         create_rectangular_mesh, create_unit_rectangular_mesh,
         create_voronoi_mesh, extrude_to_3d, load_vtk_mesh,
+        create_voronoi_mesh_3d, write_voronoi3d_vtk,
+        relax_voronoi3d_seeds, relax_voronoi3d,
         # Local mapping
         NodeID2LocalID,
         # Volume assembly helpers

@@ -306,7 +306,7 @@ function remove_split_edges(poly_nodes::AbstractVector{Int},
 
 		area = 0.5 * abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
 
-		if area < 1e-6
+		if area < 1e-13
 			push!(rm, ip1)
 		end
 	end
@@ -461,4 +461,452 @@ function load_vtk_mesh(filename::String, ::Type{ElT}) where {ElT <: ElType}
     
     # Create mesh
     return Mesh(topo, ElT())
+end
+
+
+
+# ===================== 3D Voronoi (brick-bounded, no external libs) =====================
+
+@inline _as_SA(p::Tuple{Float64,Float64,Float64}) = SA[p[1],p[2],p[3]]
+@inline _as_SA(p::SVector{3,Float64}) = p
+
+@inline function _plane_eval(n::SVector{3,Float64}, d::Float64, x::SVector{3,Float64})
+    return dot(n, x) - d
+end
+
+@inline function _line_plane_intersection(p1::SVector{3,Float64}, p2::SVector{3,Float64}, n::SVector{3,Float64}, d::Float64)
+    denom = dot(n, p2 - p1)
+    t = (d - dot(n, p1)) / denom
+    return p1 + t * (p2 - p1)
+end
+
+@inline function _orthonormal_basis(n::SVector{3,Float64})
+    a = abs(n[1]) < 0.9 ? SA[1.0,0.0,0.0] : SA[0.0,1.0,0.0]
+    u = normalize(cross(n, a))
+    v = cross(n, u)
+    return u, v
+end
+
+function _order_points_on_plane(points::Vector{SVector{3,Float64}}, n::SVector{3,Float64})
+    c = reduce(+, points) / length(points)
+    u, v = _orthonormal_basis(n)
+    angles = map(p -> atan(dot(p - c, v), dot(p - c, u)), points)
+    idx = sortperm(angles)
+    return points[idx]
+end
+
+@inline function _is_close(a::SVector{3,Float64}, b::SVector{3,Float64}, tol::Float64)
+    return maximum(abs.(a .- b)) <= tol
+end
+
+function _dedup_points(points::Vector{SVector{3,Float64}}, tol::Float64)
+    # Deduplicate with tolerance using quantization key
+    q = (p)->(round(Int, p[1]/tol), round(Int, p[2]/tol), round(Int, p[3]/tol))
+    seen = Dict{NTuple{3,Int},Int}()
+    out = SVector{3,Float64}[]
+    for p in points
+        key = q(p)
+        if haskey(seen, key)
+            # Optionally refine by exact tol check against existing
+            existing = out[seen[key]]
+            if !_is_close(existing, p, tol)
+                # Rare quantization clash; keep distinct by slight key perturbation
+                push!(out, p)
+            end
+        else
+            seen[key] = length(out) + 1
+            push!(out, p)
+        end
+    end
+    return out
+end
+
+function _dedup_consecutive(poly::Vector{SVector{3,Float64}}, tol::Float64)
+    isempty(poly) && return poly
+    out = SVector{3,Float64}[]
+    last = poly[1]
+    push!(out, last)
+    for i in 2:length(poly)
+        p = poly[i]
+        if !_is_close(p, last, tol)
+            push!(out, p)
+            last = p
+        end
+    end
+    # also check first/last
+    if length(out) >= 2 && _is_close(out[1], out[end], tol)
+        pop!(out)
+    end
+    return out
+end
+
+function _clip_polygon_by_plane(poly::Vector{SVector{3,Float64}}, n::SVector{3,Float64}, d::Float64, tol::Float64)
+    # Sutherland–Hodgman polygon clip in 3D against plane dot(n,x) <= d
+    newpoly = SVector{3,Float64}[]
+    added = SVector{3,Float64}[]  # intersections to form cap face later
+    if isempty(poly)
+        return newpoly, added
+    end
+    s_prev = _plane_eval(n, d, poly[end])
+    prev = poly[end]
+    for curr in poly
+        s_curr = _plane_eval(n, d, curr)
+        inside_prev = s_prev <= tol
+        inside_curr = s_curr <= tol
+        if inside_curr
+            if inside_prev
+                # in->in
+                push!(newpoly, curr)
+            else
+                # out->in
+                inter = _line_plane_intersection(prev, curr, n, d)
+                push!(newpoly, inter)
+                push!(newpoly, curr)
+                push!(added, inter)
+            end
+        else
+            if inside_prev
+                # in->out
+                inter = _line_plane_intersection(prev, curr, n, d)
+                push!(newpoly, inter)
+                push!(added, inter)
+            else
+                # out->out -> nothing
+            end
+        end
+        prev = curr
+        s_prev = s_curr
+    end
+    newpoly = _dedup_consecutive(newpoly, tol)
+    return newpoly, added
+end
+
+function _clip_polyhedron_by_plane(faces::Vector{Vector{SVector{3,Float64}}}, n::SVector{3,Float64}, d::Float64, tol::Float64)
+    new_faces = Vector{Vector{SVector{3,Float64}}}()
+    ring = SVector{3,Float64}[]
+    for face in faces
+        clipped, added = _clip_polygon_by_plane(face, n, d, tol)
+        if length(clipped) >= 3
+            push!(new_faces, clipped)
+        end
+        append!(ring, added)
+    end
+    # Add cap face if the plane intersected the polyhedron
+    if !isempty(ring)
+        ring = _dedup_points(ring, max(tol, 10*eps(Float64)))
+        if length(ring) >= 3
+            ring = _order_points_on_plane(ring, n)
+            push!(new_faces, ring)
+        end
+    end
+    return new_faces
+end
+
+function _brick_faces(left::SVector{3,Float64}, right::SVector{3,Float64})
+    x0,y0,z0 = left
+    x1,y1,z1 = right
+    c000 = SA[x0,y0,z0]; c100 = SA[x1,y0,z0]; c110 = SA[x1,y1,z0]; c010 = SA[x0,y1,z0]
+    c001 = SA[x0,y0,z1]; c101 = SA[x1,y0,z1]; c111 = SA[x1,y1,z1]; c011 = SA[x0,y1,z1]
+    return Vector{SVector{3,Float64}}[
+        [c000,c100,c110,c010], # z = z0 (bottom)
+        [c001,c011,c111,c101], # z = z1 (top)
+        [c000,c010,c011,c001], # x = x0 (left)
+        [c100,c101,c111,c110], # x = x1 (right)
+        [c000,c001,c101,c100], # y = y0 (front)
+        [c010,c110,c111,c011], # y = y1 (back)
+    ]
+end
+
+@inline function _bisector_plane(si::SVector{3,Float64}, sj::SVector{3,Float64})
+    n = sj - si
+    d = (dot(sj, sj) - dot(si, si)) / 2
+    return n, d
+end
+
+function _create_cell_faces_for_seed(seed::SVector{3,Float64}, seeds::AbstractVector{SVector{3,Float64}}, left::SVector{3,Float64}, right::SVector{3,Float64}, tol::Float64)
+    faces = _brick_faces(left, right)
+    for s in seeds
+        if s === seed; continue; end
+        n, d = _bisector_plane(seed, s)
+        faces = _clip_polyhedron_by_plane(faces, n, d, tol)
+        if isempty(faces)
+            break
+        end
+    end
+    return faces
+end
+
+function _add_polyhedron_to_topology!(faces::Vector{Vector{SVector{3,Float64}}}, topo::Topology{3}, dedup_tol::Float64)
+    # Global dedup by quantization map
+    quant = (p)->(round(Int, p[1]/dedup_tol), round(Int, p[2]/dedup_tol), round(Int, p[3]/dedup_tol))
+    # Reuse existing nodes already present in topo
+    node_map = Dict{NTuple{3,Int},Int}()
+    # seed with current nodes in topology
+    for n in get_nodes(topo)
+        key = quant(SA[n[1],n[2],n[3]])
+        node_map[key] = get_id(n)
+    end
+    # build faces in terms of node ids
+    face_ids_col = Vector{Vector{Int}}()
+    for poly in faces
+        poly = _dedup_consecutive(poly, dedup_tol)
+        if length(poly) < 3; continue; end
+        ids = Int[]
+        for p in poly
+            key = quant(p)
+            id = get!(node_map, key) do
+                add_node!(p, topo)
+            end
+            push!(ids, id)
+        end
+        # remove duplicate last==first if present
+        if !isempty(ids) && first(ids) == last(ids)
+            pop!(ids)
+        end
+        if length(ids) >= 3
+            push!(face_ids_col, ids)
+        end
+    end
+    if !isempty(face_ids_col)
+        add_volume!(face_ids_col, topo)
+    end
+end
+
+"""
+	create_voronoi_mesh_3d(left, right, seeds, ::Type{ElT}; dedup_tol=defaultTol)
+
+Generate a 3D Voronoi tessellation clipped to the axis-aligned brick defined by
+`left = (x0,y0,z0)` and `right = (x1,y1,z1)`, using the provided seed points.
+
+- No external meshing libraries are used.
+- Vertices are deduplicated with tolerance `dedup_tol` to avoid near-duplicates.
+- Returns a `Mesh{3,ElT}` ready for VTK export via `write_vtk`.
+"""
+function create_voronoi_mesh_3d(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	seeds_in::AbstractVector{<:SVector{3,Float64}},
+	::Type{ElT}; dedup_tol::Float64 = -1.0,
+) where {ElT<:ElType}
+
+	left3 = _as_SA(left)
+	right3 = _as_SA(right)
+	seeds = collect(seeds_in)
+
+	# Default dedup tolerance based on domain diagonal
+	default_tol = norm(right3 - left3) * 1e-10
+	tol = default_tol
+	ddtol = dedup_tol < 0 ? default_tol : dedup_tol
+
+	topo = Topology{3}()
+
+	for i in eachindex(seeds)
+		faces = _create_cell_faces_for_seed(seeds[i], seeds, left3, right3, tol)
+		isempty(faces) && continue
+		_add_polyhedron_to_topology!(faces, topo, ddtol)
+	end
+
+	return Mesh(topo, ElT())
+end
+
+"""
+	create_voronoi_mesh_3d(left, right, num_points, ::Type{ElT}; rng=MersenneTwister(123), dedup_tol=defaultTol)
+
+Convenience wrapper that samples `num_points` uniform seeds in the brick and
+builds the Voronoi mesh.
+"""
+function create_voronoi_mesh_3d(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	num_points::Int,
+	::Type{ElT}; rng = Random.MersenneTwister(123), dedup_tol::Float64 = -1.0,
+) where {ElT<:ElType}
+
+	left3 = _as_SA(left)
+	right3 = _as_SA(right)
+	L = right3 - left3
+	seeds = [SA[left3[1] + rand(rng)*L[1], left3[2] + rand(rng)*L[2], left3[3] + rand(rng)*L[3]] for _ in 1:num_points]
+	return create_voronoi_mesh_3d(left, right, seeds, ElT; dedup_tol)
+end
+
+"""
+	write_voronoi3d_vtk(left, right, seeds_or_n, filename, ::Type{ElT}=StandardEl{1})
+
+Helper to generate and immediately write a Voronoi 3D mesh to VTK using the
+existing `write_vtk` utilities.
+"""
+function write_voronoi3d_vtk(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	seeds::AbstractVector{<:SVector{3,Float64}},
+	filename::String,
+	::Type{ElT}=StandardEl{1}; dedup_tol::Float64 = -1.0,
+) where {ElT<:ElType}
+
+	mesh = create_voronoi_mesh_3d(left, right, seeds, ElT; dedup_tol)
+	write_vtk(mesh.topo, filename)
+	return mesh
+end
+
+function write_voronoi3d_vtk(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	num_points::Int,
+	filename::String,
+	::Type{ElT}=StandardEl{1}; rng = Random.MersenneTwister(123), dedup_tol::Float64 = -1.0,
+) where {ElT<:ElType}
+
+	mesh = create_voronoi_mesh_3d(left, right, num_points, ElT; rng, dedup_tol)
+	write_vtk(mesh.topo, filename)
+	return mesh
+end
+
+
+# ===================== Lloyd relaxation for 3D Voronoi =====================
+
+@inline function _tet_volume(a::SVector{3,Float64}, b::SVector{3,Float64}, c::SVector{3,Float64}, d::SVector{3,Float64})
+    return abs(dot(cross(b - a, c - a), d - a)) / 6
+end
+
+function _convex_poly_centroid(points::Vector{SVector{3,Float64}})
+    # Triangulate convex hull of points and compute volume centroid
+    tets = tetrahedralize_points_convex(points)
+    Vsum = 0.0
+    Csum = SA[0.0, 0.0, 0.0]
+    for (i,j,k,l) in tets
+        a = points[i]; b = points[j]; c = points[k]; d = points[l]
+        V = _tet_volume(a,b,c,d)
+        Vsum += V
+        Csum += V * ((a + b + c + d) / 4)
+    end
+    if Vsum == 0.0
+        # Fallback: mean of vertices
+        return reduce(+, points) / length(points)
+    end
+    return Csum / Vsum
+end
+
+function _cell_centroid_from_faces(faces::Vector{Vector{SVector{3,Float64}}})
+    # Gather unique vertices
+    pts = SVector{3,Float64}[]
+    seen = Set{NTuple{3,Float64}}()
+    for f in faces
+        for p in f
+            t = (p[1],p[2],p[3])
+            if !(t in seen)
+                push!(seen, t)
+                push!(pts, p)
+            end
+        end
+    end
+    return _convex_poly_centroid(pts)
+end
+
+"""
+	relax_voronoi3d_seeds(left, right, seeds; maxiters=10, move_tol=1e-6, step=1.0, min_spacing=nothing, spacing_passes=1, spacing_step=1.0)
+
+Lloyd-style relaxation for 3D Voronoi seeds with optional spacing control.
+
+- `step` (0,1]: under-relaxation for centroid move.
+- `min_spacing`: if set (e.g., 0.02*min(box size)), applies a min-distance projection after each Lloyd step to reduce very short edges.
+- `spacing_passes`: number of projection sweeps per iteration (1–2 is usually enough).
+- `spacing_step` (0,1]: fraction of the computed projection applied per pass (for stability).
+"""
+function relax_voronoi3d_seeds(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	seeds_in::AbstractVector{<:SVector{3,Float64}};
+	maxiters::Int=10, move_tol::Float64=1e-6, step::Float64=1.0,
+	min_spacing::Union{Nothing,Float64}=nothing, spacing_passes::Int=1, spacing_step::Float64=1.0,
+)::Vector{SVector{3,Float64}}
+
+	left3 = _as_SA(left)
+	right3 = _as_SA(right)
+	L = right3 - left3
+	seeds = collect(seeds_in)
+
+	# tolerance for clipping geometry (robustness)
+	clip_tol = norm(L) * 1e-10
+
+	for it in 1:maxiters
+		new_seeds = similar(seeds)
+		dmax = 0.0
+		for i in eachindex(seeds)
+			faces = _create_cell_faces_for_seed(seeds[i], seeds, left3, right3, clip_tol)
+			if isempty(faces)
+				new_seeds[i] = seeds[i] # keep if degenerate
+				continue
+			end
+			c = _cell_centroid_from_faces(faces)
+			# bounded step and clamp to domain
+			ns = (1 - step) * seeds[i] + step * c
+			ns = SA[
+				clamp(ns[1], left3[1], right3[1]),
+				clamp(ns[2], left3[2], right3[2]),
+				clamp(ns[3], left3[3], right3[3])
+			]
+			new_seeds[i] = ns
+			dmax = max(dmax, maximum(abs.(ns .- seeds[i])) / maximum(L))
+		end
+
+		# Optional min-distance projection to improve shortest/longest edge ratio
+		if min_spacing !== nothing && min_spacing > 0
+			ms2 = min_spacing^2
+			for _p in 1:max(1, spacing_passes)
+				delta = [SA[0.0,0.0,0.0] for _ in eachindex(new_seeds)]
+				for i in 1:length(new_seeds)-1
+					pi = new_seeds[i]
+					for j in (i+1):length(new_seeds)
+						pj = new_seeds[j]
+						dv = pj - pi
+						d2 = sum(abs2, dv)
+						if d2 < ms2
+							if d2 == 0.0
+								# split deterministically along x
+								dir = SA[1.0,0.0,0.0]
+								gap = min_spacing
+								shift = 0.5 * spacing_step * gap * dir
+								delta[i] -= shift
+								delta[j] += shift
+							else
+								d = sqrt(d2)
+								gap = min_spacing - d
+								dir = dv / d
+								shift = 0.5 * spacing_step * gap * dir
+								delta[i] -= shift
+								delta[j] += shift
+							end
+						end
+					end
+				end
+				# Apply accumulated shifts and clamp to domain
+				for i in eachindex(new_seeds)
+					p = new_seeds[i] + delta[i]
+					new_seeds[i] = SA[
+						clamp(p[1], left3[1], right3[1]),
+						clamp(p[2], left3[2], right3[2]),
+						clamp(p[3], left3[3], right3[3])
+					]
+				end
+			end
+		end
+		seeds = new_seeds
+		if dmax < move_tol
+			break
+		end
+	end
+
+	return seeds
+end
+
+function relax_voronoi3d(
+	left::Tuple{Float64,Float64,Float64},
+	right::Tuple{Float64,Float64,Float64},
+	seeds::AbstractVector{<:SVector{3,Float64}},
+	::Type{ElT}; maxiters::Int=10, move_tol::Float64=1e-6, step::Float64=1.0,
+	min_spacing::Union{Nothing,Float64}=nothing, spacing_passes::Int=1, spacing_step::Float64=1.0, dedup_tol::Float64=-1.0,
+) where {ElT<:ElType}
+
+	seeds_relaxed = relax_voronoi3d_seeds(left, right, seeds; maxiters, move_tol, step, min_spacing, spacing_passes, spacing_step)
+	return create_voronoi_mesh_3d(left, right, seeds_relaxed, ElT; dedup_tol)
 end

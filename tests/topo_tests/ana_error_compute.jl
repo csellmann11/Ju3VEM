@@ -1,8 +1,10 @@
 import Ferrite 
 import Ferrite.Tensors as TS
-function compute_error(u_ana::F,cv::CellValues{D,U},u::AbstractVector{Float64}) where {D,U,F<:Function}
+function compute_error(u_ana::F,
+    cv::CellValues{D,U,ET},
+    u::AbstractVector{Float64}) where {D,U,F<:Function,K,ET<:ElType{K}}
 
-    base3d = get_base(BaseInfo{3,1,U}())
+    base3d = get_base(BaseInfo{3,K,U}())
 
     ip = Ferrite.Lagrange{Ferrite.RefTetrahedron,1}()^U 
     qr = Ferrite.QuadratureRule{Ferrite.RefTetrahedron}(5)
@@ -27,10 +29,17 @@ function compute_error(u_ana::F,cv::CellValues{D,U},u::AbstractVector{Float64}) 
         
         proj_s, proj = create_volume_vem_projectors(
             element.id,cv.mesh,cv.volume_data,cv.facedata_col,cv.vnm)
-
+ 
 
         dofs = Ju3VEM.VEMUtils.get_cell_dofs(cv)
         uel  = u[dofs] 
+
+        nm = cv.vnm 
+        for (node_id,local_id) in nm.map
+            uel[local_id] = u[node_id]
+        end
+
+
 
         uπ   = sol_proj(base3d,uel,proj_s |> x -> stretch(x,Val(U)))
 
@@ -41,7 +50,7 @@ function compute_error(u_ana::F,cv::CellValues{D,U},u::AbstractVector{Float64}) 
             global_ids = l2g[tets_local[i]|> collect] 
             tet_nodes = TS.Vec{D}.(get_nodes(topo)[global_ids])
             Ferrite.reinit!(fr_cv,tet_nodes) 
-            for qpoint in Ferrite.getnquadpoints(fr_cv)
+            for qpoint in 1:Ferrite.getnquadpoints(fr_cv)
                 dΩ = Ferrite.getdetJdV(fr_cv,qpoint) 
                 quad_coord = Ferrite.spatial_coordinate(fr_cv,qpoint,tet_nodes)
                 u_anax = u_ana(quad_coord)
@@ -61,7 +70,7 @@ end
 
 
 
-function check_mesh(cv::CellValues{3,U}) where U
+function check_mesh(cv::CellValues{3,U}; is_dirichlet_boundary::F) where {U,F<:Function}
 
     mesh = cv.mesh
     topo = mesh.topo
@@ -69,12 +78,18 @@ function check_mesh(cv::CellValues{3,U}) where U
 
     min_hvol = Inf
     max_hvol = 0.0 
+
+    min_edge_length = Inf
+    max_edge_length = 0.0
+
     max_coplanar_frac = 0.0
 
     max_face_nodes   = 0 
     max_vol_nodes    = 0 
     max_vol_faces    = 0
     all_faces_planar = 0
+
+    node_id_to_element = Dict{Int,Vector{Int}}()
     
     for element in RootIterator{4}(topo)
         reinit!(element.id,cv)
@@ -94,16 +109,24 @@ function check_mesh(cv::CellValues{3,U}) where U
 
         face_normals = SVector{3,Float64}[]
 
+        nodes_seen_for_element = Set{Int}()
+
         Ju3VEM.VEMGeo.iterate_volume_areas(cv.facedata_col,topo,element.id) do _, face_data, _ 
 
-            face_nodes_ids = face_data.face_node_ids    
+            face_nodes_ids = face_data.face_node_ids.v.args[1]    
             face_nodes     = getindex.(Scalar(mesh.nodes),face_nodes_ids)
+
+            for node_id in face_nodes_ids
+                node_id ∈ nodes_seen_for_element && continue
+                push!(nodes_seen_for_element,node_id)
+                push!(get!(node_id_to_element,node_id,Int[]),element.id)
+            end
             
             #Info: Check planarity 
             plane = face_data.dΩ.plane
             face_nodes2d = Ju3VEM.VEMGeo.project_to_2d_abs.(face_nodes,Scalar(plane)) 
             face_nodes3d_back = Ju3VEM.VEMGeo.project_to_3d.(face_nodes2d,Scalar(plane))
-            if norm(face_nodes3d_back - face_nodes) > 1e-8 
+            if norm(face_nodes3d_back - face_nodes) > 1e-6 
                 all_faces_planar_local[] += 1
             end
 
@@ -115,6 +138,13 @@ function check_mesh(cv::CellValues{3,U}) where U
 
                     num_coplanar_faces_local[] += 1
                 end
+            end
+
+            for (i,node_id) in enumerate(face_nodes_ids)
+                ip1 = get_next_idx(face_nodes_ids,i)
+                edge_length = norm(face_nodes[i] - face_nodes[ip1])
+                min_edge_length = min(min_edge_length,edge_length)
+                max_edge_length = max(max_edge_length,edge_length)
             end
 
             push!(face_normals,face_normal)
@@ -132,6 +162,20 @@ function check_mesh(cv::CellValues{3,U}) where U
         all_faces_planar = all_faces_planar + all_faces_planar_local[]
     end
 
+    for node_id in keys(node_id_to_element)
+        node = mesh.nodes[node_id] 
+        is_dirichlet_boundary(node) && continue 
+
+        if length(node_id_to_element[node_id]) != 4 
+            println("node $node_id has $(length(node_id_to_element[node_id])) elements")
+            elements_unique = allunique(node_id_to_element[node_id])
+            println("elements_unique: $elements_unique")
+            display(node)
+        end
+    end
+
+
+
     println("finished checking mesh")
     println("="^50)
     println("General mesh information")
@@ -146,8 +190,9 @@ function check_mesh(cv::CellValues{3,U}) where U
     println("the maximum number of nodes for a volume is $max_vol_nodes")
     println("the number of faces which are not planar is $all_faces_planar")
     println("the maximum fraction of coplanar faces is $max_coplanar_frac")
-    # return min_hvol,max_hvol,max_face_nodes,max_vol_nodes,max_vol_faces,all_faces_planar
+    println("the minimum edge length is $min_edge_length, the maximum edge length is $max_edge_length")
 
+    return nothing
 
 
 end

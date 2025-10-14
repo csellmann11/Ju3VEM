@@ -14,7 +14,6 @@ function create_B_mat(mesh::Mesh{D,ET},
     plane = fd.dΩ.plane
 
     base     = get_base(BaseInfo{2,O,1}())
-    mom_base = get_base(BaseInfo{2,O-2,1}())
 
     # full_node_ids   = get_iterative_area_node_ids(area,mesh)
     vertex_ids      = full_node_ids.v.args[1]
@@ -84,7 +83,7 @@ function create_B_mat(mesh::Mesh{D,ET},
         for d in 1:2
             ddm = ∂(m,hf,d,d) 
             ddm.val == zero(ddm.val) && continue
-            i = findfirst(m -> ddm.exp == m.exp,mom_base.base)
+            i = get_exp_to_idx_dict(ddm.exp)
             B_mat[idx,num_nodes+i] -= ddm.val*area
         end
     end
@@ -100,9 +99,6 @@ function create_D_mat(mesh::Mesh{D,ET},
 
     vertex_ids,edge_vertex_ids,moment_ids = fd.face_node_ids.v.args
 
-    # vertices        = @views mesh.nodes[vertex_ids]
-    # edge_vertices   = @views mesh.nodes[edge_vertex_ids]
-
     num_vertives_total = length(vertex_ids) + length(edge_vertex_ids)
 
     D_mat = FixedSizeMatrix{Float64}(undef,
@@ -111,8 +107,7 @@ function create_D_mat(mesh::Mesh{D,ET},
  
 
     for (idx,m) in enumerate(base)
-        # Nodal evaluations
-        # for (i,node) in enumerate(Iterators.flatten((vertices,edge_vertices)))
+        # Nodal evaluations 
         for (i,node_id) in enumerate(Iterators.flatten((vertex_ids,edge_vertex_ids)))
             node = mesh[node_id]
             node_2d = project_to_2d_abs(node,fd.dΩ.plane)
@@ -160,7 +155,7 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
     full_node_ids = FlattenVecs{3,Int}()
     get_iterative_area_node_ids!(full_node_ids,face,mesh)
 
-
+ 
     ΠsL2 = FixedSizeMatrix{Float64}(
         undef,length(base),length(full_node_ids))
 

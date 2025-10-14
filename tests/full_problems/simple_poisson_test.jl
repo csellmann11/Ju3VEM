@@ -17,7 +17,7 @@ end
 # Grid parameters
 # nx = 30; ny = 30; nz = 30
 nx,ny,nz = 10,10,10
-mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{1})
+mesh = create_unit_rectangular_mesh(nx,ny,nz, StandardEl{K})
 
 
 add_node_set!(mesh, "dirichlet", x -> x[1] == 0 || x[1] == 1 ||

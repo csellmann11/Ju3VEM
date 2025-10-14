@@ -28,7 +28,7 @@ function add_node_set!(mesh::Mesh,
 
     n_set = Set{Int}()
     for node in Iterators.flatten((get_vertices(mesh),get_gauss_nodes(mesh)))
-
+ 
         !is_active(node) && continue
         f(node) && push!(n_set,get_id(node))
     end
@@ -95,12 +95,69 @@ end
 
 
 
+function function_integration2d(f::F,
+    points::AbstractVector{<:StaticVector{2,Float64}};
+    order = 2) where {F <: Function}
+
+    α = mean(point[1] for point in points)
+    gp, gw = get_gauss_legendre(order+1)
+    res_type = Core.Compiler.return_type(f, Tuple{Float64, Float64})
+    res = zero(res_type)
+    
+    # Precompute order+1 to avoid repeated addition
+    n_quad = order + 1
+    
+    @inbounds for i in eachindex(points)
+        next_i = get_next_idx(points,i)
+        
+        # Extract coordinates once to avoid repeated indexing
+        ip1, ip2 = points[i][1], points[i][2]
+        np1, np2 = points[next_i][1], points[next_i][2]
+        
+        # Precompute common terms
+        diff1 = np1 - ip1
+        diff2 = np2 - ip2
+        sum1 = np1 + ip1
+        sum2 = np2 + ip2
+        half_diff1 = diff1 * 0.5
+        half_diff2 = diff2 * 0.5
+        half_sum1 = sum1 * 0.5
+        half_sum2 = sum2 * 0.5
+        quarter_diff2 = diff2 * 0.25
+        
+        for j in 1:n_quad
+            # Compute position
+            gpj = gp[j]
+            xj = half_diff1 * gpj + half_sum1
+            yj = half_diff2 * gpj + half_sum2
+            
+            # Precompute weight factor
+            xj_minus_α = xj - α
+            base_wj = quarter_diff2 * xj_minus_α * gw[j]
+            half_xj_minus_α = xj_minus_α * 0.5
+            half_xj_plus_α = (xj + α) * 0.5
+            
+            for m in 1:n_quad
+                gpm = gp[m]
+                xjm = half_xj_minus_α * gpm + half_xj_plus_α
+                wjm = base_wj * gw[m]
+                
+                res += f(xjm, yj) * wjm
+            end
+        end
+    end
+    
+    return res
+end
+
+
 function add_dirichlet_bc!(ch::ConstraintHandler{D,U},
     dh::DofHandler{D,U},
     set_name::String,
     f::F;
     c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function}
 
+    @warn "add_dirichlet_bc! is deprecated, use add_dirichlet_bc!(ch,dh,fd_col,set_name,f;c_dofs=c_dofs) instead"
 
     @assert U >= maximum(c_dofs) "wrong dim of constraint dofs"
 
@@ -110,13 +167,13 @@ function add_dirichlet_bc!(ch::ConstraintHandler{D,U},
 
     dummy_input = zero(eltype(mesh.nodes))
     dummy_output = f(dummy_input)
-
+ 
     @assert length(dummy_output) == length(c_dofs) "wrong dim of constraint dofs" 
 
     for node_id in node_set
         !is_active(mesh[node_id]) && continue
         dof_ids = get_dofs(dh,node_id)[c_dofs]
-        
+         
         f_output = f(mesh[node_id]) 
 
         for (i,dofi) in enumerate(dof_ids)
@@ -128,37 +185,96 @@ end
 
 
 
+"""
+    add_dirichlet_bc!(ch::ConstraintHandler{D,U,ET},
+    dh::DofHandler{D,U},
+    fd_col::Dict{Int,<:FaceData{D}},
+    set_name::String,
+    f::F;
+    c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
 
-function function_integration2d(f::Function, 
-    points::AbstractVector{<:StaticVector{2,Float64}}; 
-    order = 2)
+Add Dirichlet boundary conditions for a given face set. 
 
-	n_points = length(points)
+# Arguments
+- `ch::ConstraintHandler{D,U,ET}`: The constraint handler to which Dirichlet BCs will be added
+- `dh::DofHandler{D,U}`: The degree of freedom handler for the mesh
+- `fd_col::Dict{Int,<:FaceData{D}}`: Dictionary mapping face IDs to face data structures
+- `set_name::String`: Name of the face set in the mesh where BCs should be applied
+- `f::Function`: Function which returns the values of the constraint dofs
+- `c_dofs::AbstractVector{Int}`: The degrees of freedom which are constrained
+"""
+function add_dirichlet_bc!(ch::ConstraintHandler{D,U,ET},
+    dh::DofHandler{D,U},
+    fd_col::Dict{Int,<:FaceData{D}},
+    set_name::String,
+    f::F;
+    c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
 
-	alpha = sum(p[1] for p in points)/n_points
+
+    @assert U >= maximum(c_dofs) "wrong dim of constraint dofs"
+
+    face_set = ch.mesh.face_sets[set_name]
+
+    mesh = ch.mesh
+
+    dummy_input = zero(eltype(mesh.nodes))
+    dummy_output = f(dummy_input)
+
+    mom_base = get_base(BaseInfo{2,K-2,1}())
+
+    @assert length(dummy_output) == length(c_dofs) "wrong dim of constraint dofs" 
+
+    node_ids_seen = Set{Int}()
+
+    for face_id in face_set
+
+        face_data = fd_col[face_id]
+
+        vertex_ids      = face_data.face_node_ids.v.args[1]
+        edge_vertex_ids = face_data.face_node_ids.v.args[2]
+        moment_ids      = face_data.face_node_ids.v.args[3]
+
+   
+        for vertex_id in Iterators.flatten((vertex_ids,edge_vertex_ids))
+            vertex_id ∈ node_ids_seen && continue
+            push!(node_ids_seen,vertex_id)
+            dof_ids = get_dofs(dh,vertex_id)[c_dofs]
+            f_output = f(mesh[vertex_id]) 
+            for (i,dofi) in enumerate(dof_ids)
+                ch.d_bcs[dofi] = f_output[i] + get(ch.d_bcs,dofi,0.0)
+            end
+        end
+
+        K < 2 && continue
+
+        vertices_2d = map(vertex_ids) do vertex_id
+            project_to_2d_abs(mesh[vertex_id],face_data.dΩ.plane)
+        end
 
 
-    gp,gw = get_gauss_legendre(order+1)
-	res = zero(Float64)
+        for (m,moment_id) in zip(mom_base,moment_ids)
 
-	@inbounds for i in eachindex(points)
-		next_i = mod1(i+1,n_points)
-		ip = points[i]
-		np = points[next_i]
-		
-		for j in 1:order+1
-			xj,yj = (np - ip)/2 * gp[j] .+ (np + ip)/2
-			wj  = (np[2] - ip[2])/4 * (xj-alpha) * gw[j]
-			for m in 1:order+1
-				xjm = (xj-alpha)/2 * gp[m] + (xj+alpha)/2
-				
-				wjm = wj * gw[m]	
-				res += f(xjm,yj) * wjm
-			end
-		end
-	end
-	return res
+            val = function_integration2d(vertices_2d,order = K) do x,y 
+                x2d = SA[x,y]
+                x_scaled = (x2d - face_data.dΩ.bc) / face_data.dΩ.hf 
+                x3d = project_to_3d(x2d,face_data.dΩ.plane)
+                return f(x3d) * m(x_scaled) / get_area(face_data)
+            end
+
+   
+            dof_ids = get_dofs(dh,moment_id)[c_dofs]
+            for (i,dofi) in enumerate(dof_ids)
+                ch.d_bcs[dofi] = val[i]
+            end
+        end
+    end
+    nothing
 end
+
+
+
+
+
 
 
 
@@ -191,7 +307,6 @@ The integration is performed in the face's local 2D coordinate system, with auto
 transformation between 3D and 2D coordinates.
 
 # Notes
-- Currently only tested for `K == 1`
 - The function modifies `ch.n_bcs` in place
 - Multiple calls to this function will accumulate values for the same DOFs
 """
@@ -201,7 +316,6 @@ function add_neumann_bc!(ch::ConstraintHandler{D,U,ET},
     set_name::String,
     f::F) where {D,U,K,ET<:ElType{K},F <: Function}
 
-    @assert K == 1 "so far only tested for K == 1"
     face_set = ch.mesh.face_sets[set_name] 
 
     for (face_id,fd) in fd_col 
@@ -211,17 +325,15 @@ function add_neumann_bc!(ch::ConstraintHandler{D,U,ET},
 
         face_base      = ElementBaseFunctions(get_base(BaseInfo{2,K,U}()),fd.ΠsL2 |> x -> stretch(x,Val(U)))
 
-        nodes2d = map(fd.face_node_ids) do node_id
+        nodes2d = map(fd.face_node_ids.v.args[1]) do node_id
             project_to_2d_abs(ch.mesh[node_id],fd.dΩ.plane)
         end
-
-
+         
         dofs = get_dofs(dh,fd.face_node_ids)
-
 
         for (base_fun,dof) in zip(face_base,dofs)
    
-            val = function_integration2d(nodes2d,order = 1) do x,y 
+            val = function_integration2d(nodes2d,order = K) do x,y 
                 x2d = SA[x,y]
                 x_scaled = (x2d - fd.dΩ.bc) / fd.dΩ.hf 
 

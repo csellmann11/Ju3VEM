@@ -249,17 +249,24 @@ function compute_face_integral_coeffs!(
  
     bc3d_face  = project_to_3d(fd.bc,plane)
 
-    offset_2d = if offset === nothing 
-        project_to_2d_abs(bc3d_face,plane)
-    else 
-        project_to_2d_abs(offset,plane)
+    # offset_2d = if offset === nothing 
+    #     project_to_2d_abs(bc3d_face,plane)
+    # else 
+    #     project_to_2d_abs(offset,plane)
+    # end
+
+    # flat_offset = project_to_3d_flat(offset_2d,plane)
+
+    if offset === nothing
+        offset = bc3d_face
     end
 
-    flat_offset = project_to_3d_flat(offset_2d,plane)
+    # display(offset)
+    # display(flat_offset)
 
 
     compute_transformation_coeffs3d_to_2d!(
-        coeffs,m, (bc3d_face-flat_offset),plane.u,plane.v)
+        coeffs,m, (bc3d_face-offset),plane.u,plane.v)
 
     return coeffs
 end
@@ -278,6 +285,8 @@ function compute_face_integral(m::Monomial{T,3},
     ∫m = @no_escape begin 
         coeffs = @alloc(Float64,len)
         compute_face_integral_coeffs!(coeffs,m,fd,offset)
+
+
 
         ∫m = zero(T)
         @inbounds for (i,ci) in enumerate(coeffs)

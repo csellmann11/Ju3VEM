@@ -8,9 +8,6 @@ using LinearAlgebra
 using Ju3VEM.VEMGeo: _refine!,_coarsen!
 
 include("../topo_tests/ana_error_compute.jl")
-# using Ju3VEM.VEMUtils: create_volume_vem_projectors, reinit!,get_n_cell_dofs
-# using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
-# using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
 
 const U = 1
 
@@ -34,22 +31,8 @@ nx,ny,nz =  8,8,8
 mesh = load_vtk_mesh("tests/full_problems/voronoi4000_3d_with_lloyd.vtk", StandardEl{1});
 # mesh = load_vtk_mesh("tests/full_problems/voronoi4000_3d_no_lloyd.vtk", StandardEl{1});
 
-function rand_refinement(mesh,num_ref = 2)
-    rng = Random.MersenneTwister(123)
-    for i in 1:num_ref
-        for vol in RootIterator{4}(mesh.topo)
-            if rand(rng,0:1) |> Bool
-                _refine!(vol,mesh.topo)
-            end
-        end
-    end
-end
-
-
 
 mesh = Mesh(mesh.topo, StandardEl{1}())
-
-
 function is_dirichlet_boundary(x)
     return x[1] ≈ 0 || x[1] ≈ 1 ||
                 x[2] ≈ 0 || x[2] ≈ 1 || x[3] ≈ 0# || x[3] ≈ 1
@@ -106,6 +89,9 @@ function build_kel!(
     kelement
 end
 
+
+
+
 function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
     ass = Assembler{Float64}(cv)
 
@@ -138,6 +124,9 @@ function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
                 base_fun,cv.volume_data,hvol
             )
         end
+
+
+   
         stab = (I-proj)'*(I-proj)*hvol/4
         kelement .+= stretch(stab,Val(U))
 

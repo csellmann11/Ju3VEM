@@ -80,7 +80,7 @@ function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {
     end
     
     idxs_tail = tail(idxs)
-    if length(idxs_tail) > 0
+    if length(idxs_tail) > 0  
         return derivative(new_exp,val/h*exp_val,h,idxs_tail...)
     else
         return val/h*exp_val, new_exp

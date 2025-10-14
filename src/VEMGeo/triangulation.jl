@@ -395,6 +395,9 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     N = length(points)
     @assert N ≥ 4 "Need at least 4 non-coplanar points"
 
+ 
+    tol = 1e01*eps(T)
+    # tol = sqrt(eps(T))
     # Interior reference from seed tetra (remains inside as hull grows)
 
     # Find 4 non-coplanar points to seed
@@ -403,7 +406,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     i2 = -1
     for i in 2:N
         dist = norm(points[i] - points[1])
-        if dist > sqrt(eps(T))
+        if dist > tol
             i2 = i
             break
         end
@@ -414,7 +417,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     for i in 3:N
         if i != i1 && i != i2
             n = cross(points[i2] - points[i1], points[i] - points[i1])
-            if norm(n) > sqrt(eps(T))
+            if norm(n) > tol
                 i3 = i
                 break
             end
@@ -427,7 +430,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     for i in 4:N
         if i != i1 && i != i2 && i != i3
             vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
-            if abs(vol) > eps(T)*1e03
+            if abs(vol) > tol
                 i4 = i
                 break
             end
@@ -482,7 +485,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
         visible = FixedSizeArray{Bool}(undef, length(boundary))
         for (idx, (i,j,k)) in enumerate(boundary)
             n = cross(points[j] - points[i], points[k] - points[i])
-            if dot(n, points[p] - points[i]) > sqrt(eps(T))
+            if dot(n, points[p] - points[i]) > tol
                 visible[idx] = true
             else 
                 visible[idx] = false

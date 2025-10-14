@@ -91,7 +91,7 @@ function apply!(A::SparseMatrixCSC{T}, f::AbstractVector{T},
 
     # Apply Neumann boundary conditions.
     for (idx, neumann_value) in ch.n_bcs
-        if idx <= n
+        if idx <= n && !is_dirichlet[idx]
             f[idx] += neumann_value
         end
     end

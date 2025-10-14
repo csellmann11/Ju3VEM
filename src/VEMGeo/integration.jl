@@ -30,12 +30,16 @@ end
 
 
 struct FaceIntegrals{D,L} 
-
     integrals::Vector{MVector{L,Float64}}
     function FaceIntegrals{D}(integrals::Vector{MVector{L,Float64}}) where {D,L}
         new{D,L}(integrals)
     end
 end
+
+
+# struct SimplexIntegrator{L}
+
+# end
 
 
 function get_face_integral(exp::StaticVector{D,Int},face_id::Int,fi::FaceIntegrals{D,L}) where {D,L}
@@ -70,46 +74,66 @@ function integrate_polynomial_over_face(m::Monomial, face_id::Int, topo::Topolog
     area_node_ids = get_area_node_ids(topo, face_id)
     tris = get_area_triangles(ft, face_id)
 
-    n = get_plane_parameters(@views get_nodes(topo)[area_node_ids])[4]
-    order = min(1, sum(m.exp))
+    n = get_plane_parameters(@views get_nodes(topo)[area_node_ids])[3]
+    order = max(1, sum(m.exp))
     quad_rule = _TriangleQuadRuleLookup[order]
 
-    int = 0.0
+    int = 0.0 
     for tri in tris
         i,j,k = tri
         p1 = get_nodes(topo)[area_node_ids[i]]
         p2 = get_nodes(topo)[area_node_ids[j]]
         p3 = get_nodes(topo)[area_node_ids[k]]
-        nx = n[1] 
+        tri_area2x = norm(cross(p2 - p1, p3 - p1))
 
         for (w,p) in zip(quad_rule.weights, quad_rule.points)
             ξ1,ξ2 = p
             ξ3    = 1-ξ1-ξ2 
             x     = p1*ξ1 + p2*ξ2 + p3*ξ3
-            int  += w*m(x)*nx
+            int  += w*m(x)*tri_area2x
         end
     end
     return int, n
 end
 
-function integrate_polynomial_over_volume(m::Monomial, tet_id::Int, topo::Topology{3}, ft)
 
-    exp = SVector(m.exp[1]+1, m.exp[2], m.exp[3])
-    quad_rule = _TriangleQuadRuleLookup[sum(exp)]
+function integrate_polynomial_over_face(p::Polynomial, face_id::Int, topo::Topology{3}, ft)
+    int = 0.0
+    n = nothing
+    for (c,m) in zip(p.coeffs,p.base)
+        monomial = m*c
+        m_int,n = integrate_polynomial_over_face(monomial, face_id, topo, ft)
+        int += m_int
+        n = n
+    end
+    return int,n
+end
+function integrate_polynomial_over_volume(m::Monomial, vol_id::Int, topo::Topology{3}, ft)
+
+    exp1 = m.exp[1]
+    exp = SVector(exp1+1, m.exp[2], m.exp[3])
 
     mface       = Monomial(m.val, exp)
-    v_node_ids  = get_volume_node_ids(topo, tet_id)
+    v_node_ids  = get_volume_node_ids(topo, vol_id)
 
     #! make this more robust
     element_center = mean(get_nodes(topo)[vi] for vi in v_node_ids)
 
     int = 0.0
-    for area_id in get_volume_area_ids(topo, tet_id)
+    for area_id in get_volume_area_ids(topo, vol_id)
         _area_int,n = integrate_polynomial_over_face(mface, area_id, topo, ft) 
         face_node   = get_nodes(topo)[get_area_node_ids(topo, area_id)[1]]
         λ           = check_normal_sign(n, face_node, element_center)
-        int        += λ*_area_int
+        int         += λ*_area_int*n.x
     end 
-    # return int/(exp[1])
-    int/(exp[1])
+    return int/(exp1+1)
+end
+
+function integrate_polynomial_over_volume(p::Polynomial, vol_id::Int, topo::Topology{3}, ft)
+    int = 0.0
+    for (c,m) in zip(p.coeffs,p.base)
+        monomial = m*c
+        int += integrate_polynomial_over_volume(monomial, vol_id, topo, ft)
+    end
+    return int
 end
