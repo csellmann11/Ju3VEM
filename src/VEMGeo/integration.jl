@@ -84,6 +84,7 @@ function integrate_polynomial_over_face(m::Monomial, face_id::Int, topo::Topolog
         p1 = get_nodes(topo)[area_node_ids[i]]
         p2 = get_nodes(topo)[area_node_ids[j]]
         p3 = get_nodes(topo)[area_node_ids[k]]
+        # needs to be x2 since the weights only sum up to 0.5
         tri_area2x = norm(cross(p2 - p1, p3 - p1))
 
         for (w,p) in zip(quad_rule.weights, quad_rule.points)
@@ -116,7 +117,7 @@ function integrate_polynomial_over_volume(m::Monomial, vol_id::Int, topo::Topolo
     mface       = Monomial(m.val, exp)
     v_node_ids  = get_volume_node_ids(topo, vol_id)
 
-    #! make this more robust
+    #TODO: make this more robust
     element_center = mean(get_nodes(topo)[vi] for vi in v_node_ids)
 
     int = 0.0
@@ -126,6 +127,7 @@ function integrate_polynomial_over_volume(m::Monomial, vol_id::Int, topo::Topolo
         λ           = check_normal_sign(n, face_node, element_center)
         int         += λ*_area_int*n.x
     end 
+    
     return int/(exp1+1)
 end
 

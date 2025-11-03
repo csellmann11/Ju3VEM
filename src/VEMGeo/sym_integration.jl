@@ -133,19 +133,36 @@ end
 Returns the outward normal of the face w.r.t the volume center. 
 !!!WARNING!!! Only works reliable for convex volumes.
 """
-function get_outward_normal(bcvol,face_data::FaceData{3,L}) where {L}
+function get_outward_normal(bcvol,normal::StaticVector{3,Float64}, 
+    point_on_face::StaticVector{3,Float64}) 
     #TODO: move this function closer to geometric utils of the package
-    plane = face_data.dΩ.plane
-    normal = plane.n 
-
-    face_bc3d = project_to_3d(get_bc(face_data),plane)
-    face_to_vol_center = bcvol - face_bc3d 
+    face_to_vol_center = bcvol - point_on_face 
 
     if dot(face_to_vol_center,normal) < 0
-        return normal,1
+        return normal
     else
-        return -normal,-1
+        return -normal
     end
+end
+
+
+
+function get_outward_normal(bcvol,face_data::FaceData{3}) 
+    #TODO: move this function closer to geometric utils of the package
+    face_bc3d = project_to_3d(get_bc(face_data),face_data.dΩ.plane)
+    normal = face_data.dΩ.plane.n
+    return get_outward_normal(bcvol,normal,face_bc3d)
+    # plane = face_data.dΩ.plane
+    # normal = plane.n 
+
+    # face_bc3d = project_to_3d(get_bc(face_data),plane)
+    # face_to_vol_center = bcvol - face_bc3d 
+
+    # if dot(face_to_vol_center,normal) < 0
+    #     return normal,1
+    # else
+    #     return -normal,-1
+    # end
 end
 
 function get_outward_normal(bcvol,face_data::FaceData{2,K,L}) where {K,L}
@@ -233,6 +250,7 @@ function precompute_face_monomials(
     face_id::Int,topo::Topology{D},::Val{K}) where {D,K}
 
     face_node_ids = get_area_node_ids(topo,face_id)
+    # face_node_ids = get_iterative_area_vertex_ids(face_id,topo) #TODO: remove
     face_nodes    = @view topo.nodes[face_node_ids] 
     return precompute_face_monomials(face_nodes,Val(K))
 end
@@ -372,31 +390,48 @@ function precompute_volume_monomials(vol_id::Int,
     L = length(base)
     integrals = zero(MVector{L,Float64})
 
-    hvol = max_node_distance(topo.nodes,get_volume_node_ids(topo,vol_id))
+    vol_node_ids = get_volume_node_ids(topo,vol_id)
+
+    hvol = max_node_distance(topo.nodes,vol_node_ids)
 
     # Maby replace this with the mean of the face barycenters
-    _some_point_inside = mean(get_nodes(topo)[ni] for ni in get_volume_node_ids(topo,vol_id))
+    _some_point_inside = mean(get_nodes(topo)[ni] for ni in vol_node_ids)
 
     geo_data = zero(MVector{4,Float64}) 
     # the areea and th ebary cneter are computed without the offset 
     # therefore they are in an extra loop
 
-    #TODO: swith loop order for performance
-    for i in 1:min(4,L)
-        mi = base[i] 
-        p = mi.exp[1]
+    # #TODO: swith loop order for performance
+    # for i in 1:min(4,L)
+    #     mi = base[i] 
+    #     p = mi.exp[1]
  
-        m_face = Monomial(1/(p+1),SA[p+1,mi.exp[2],mi.exp[3]])
+    #     m_face = Monomial(1/(p+1),SA[p+1,mi.exp[2],mi.exp[3]])
 
-        iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
-            dΩ = facedata.dΩ 
-            normal = get_outward_normal(_some_point_inside,facedata)[1]
+    #     iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
+    #         dΩ = facedata.dΩ 
+    #         normal = get_outward_normal(_some_point_inside,facedata)
+    #         geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
+    #     end
+    # end
+
+
+    iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
+        dΩ = facedata.dΩ 
+        normal = get_outward_normal(_some_point_inside,facedata)
+        for i in 1:4
+            mi = base[i]
+            p = mi.exp[1]
+            m_face = Monomial(1/(p+1),SA[p+1,mi.exp[2],mi.exp[3]])
             geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
         end
     end
+
    
     volume_measure = geo_data[1]
     vol_bc         = SA[geo_data[2],geo_data[3],geo_data[4]]/volume_measure
+
+    @assert volume_measure > 1e-12 "volume measure is too small, got $volume_measure"
 
     integrals[1] = volume_measure
     if !shift_bc 
@@ -414,8 +449,8 @@ function precompute_volume_monomials(vol_id::Int,
         
         iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
             dΩ = facedata.dΩ 
-            normal = get_outward_normal(_some_point_inside,facedata)[1]
-            integrals[i] += compute_face_integral(m_face*normal[1],dΩ,integral_center,1.0)#hvol)
+            normal = get_outward_normal(_some_point_inside,facedata)
+            integrals[i] += compute_face_integral(m_face*normal[1],dΩ,integral_center,1.0)#hvol) #TODO: test of hvol is needed here
         end
     end
 

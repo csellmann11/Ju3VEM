@@ -7,14 +7,16 @@ module MaterialLaws
     using StaticArrays
     using LinearAlgebra
 
-    struct Helmholtz{F<:Function,G<:Function,H<:Function,P}
+    struct Helmholtz{U,D,F<:Function,G<:Function,H<:Function,P}
         f::F                    # function to evaluate
         g::G                    # gradient
         h::H                    # hessian
-        shape::Tuple{Int,Int}   # shape of argument
         pars::P                 # parameters
         
-    end 
+        function Helmholtz{U,D}(f::F, g::G, h::H, pars::P) where {F<:Function,G<:Function,H<:Function,U,D,P}
+            new{U,D,F,G,H,P}(f, g, h, pars)
+        end
+    end
 
 
     """
@@ -37,7 +39,7 @@ module MaterialLaws
     - h: hessian function
     - pars: parameters
     """
-    function Helmholtz(f::F,U::I,D::I,pars...) where {F,I<:Integer}
+    function Helmholtz{U,D}(f::F,pars::P = ()) where {F<:Function,U,D,P}
 
         ∇u = Symbolics.variables(:x,1:U,1:D)
         sym_pars = Symbolics.variables.(pars)
@@ -46,38 +48,35 @@ module MaterialLaws
         g = Symbolics.gradient(fsym,vec(∇u))
         h = Symbolics.hessian(fsym,vec(∇u))
 
-        ffun = build_function(fsym,∇u,sym_pars...;expression = Val{false},cse = true,force_SA = true)
+        ffun = build_function(fsym,∇u,sym_pars...;expression = Val{false},cse = false,force_SA = true)
         gfun = build_function(g,∇u,sym_pars...;expression = Val{false},cse = true,force_SA = true)[1]
         hfun = build_function(h,∇u,sym_pars...;expression = Val{false},cse = true,force_SA = true)[1]
         
-        return Helmholtz(ffun,gfun,hfun,(U,D),pars)
+        return Helmholtz{U,D}(f,gfun,hfun,pars)
     end
 
     export Helmholtz
 
-    @inline function eval_psi_fun(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars...) where {U,D}
-        @assert h.shape == (U,D) "argument shape mismatch"
+    @inline function eval_psi_fun(h::Helmholtz{U,D},∇u::SMatrix{U,D},
+        pars::P = h.pars) where {U,D,P}
         psi = h.f(∇u,pars...)
         return psi
     end
 
-    @inline function eval_gradient(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars...) where {U,D}
-        @assert h.shape == (U,D) "argument shape mismatch"
+    @inline function eval_gradient(h::Helmholtz{U,D},∇u::SMatrix{U,D},
+        pars::P = h.pars) where {U,D,P}
         grad = SMatrix{Tuple{U,D}}(h.g(∇u,pars...)...)
         return grad
     end
 
-    @inline function eval_hessian(h::Helmholtz,∇u::SMatrix{U,D},
-        pars = h.pars...) where {U,D}
-        @assert h.shape == (U,D) "argument shape mismatch"
-        hess = SArray{Tuple{U,D,U,D}}(h.h(∇u,pars...)...)
+    @inline function eval_hessian(h::Helmholtz{U,D},∇u::SMatrix{U,D,T},
+        pars::P = h.pars) where {U,D,P,T}
+        hess = SArray{Tuple{U,D,U,D},T}(h.h(∇u,pars...))
         return hess
     end
 
-    @inline function eval_gradient_and_hessian(h::Helmholtz,
-        ∇u::SMatrix,pars = h.pars...)
+    @inline function eval_gradient_and_hessian(h::Helmholtz{U,D},
+        ∇u::SMatrix,pars::P = h.pars) where {U,D,P}
         grad = eval_gradient(h,∇u,pars)
         hess = eval_hessian(h,∇u,pars)
         return grad,hess
@@ -86,8 +85,7 @@ module MaterialLaws
     export eval_psi_fun, eval_gradient, eval_hessian, eval_gradient_and_hessian
 
 
-    @inline function Ψneo_hook(∇u::SMatrix{D,D},pars...) where D
-        λ,μ = pars
+    @inline function Ψneo_hook(∇u::SMatrix{D,D},λ,μ) where D
         F = one(∇u) + ∇u 
         J = det(F)
 
@@ -97,14 +95,13 @@ module MaterialLaws
     end
 
 
-    @inline function Ψlin(∇u,pars...)
-        λ,μ = pars
+    @inline function Ψlin(∇u,λ,μ)
         ε = 1/2*(∇u + ∇u')
         W = λ/2 * tr(ε)^2 + μ*tr(ε*ε)
         return W 
     end
 
-    @inline function Ψpoisson(∇u,pars...)
+    @inline function Ψpoisson(∇u)
         energy = ∇u ⋅ ∇u
         return 1/2 * energy
     end

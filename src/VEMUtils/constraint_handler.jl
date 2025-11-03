@@ -157,11 +157,15 @@ function add_dirichlet_bc!(ch::ConstraintHandler{D,U},
     f::F;
     c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function}
 
-    @warn "add_dirichlet_bc! is deprecated, use add_dirichlet_bc!(ch,dh,fd_col,set_name,f;c_dofs=c_dofs) instead"
+    # @warn "add_dirichlet_bc! is deprecated, use add_dirichlet_bc!(ch,dh,fd_col,set_name,f;c_dofs=c_dofs) instead"
 
     @assert U >= maximum(c_dofs) "wrong dim of constraint dofs"
 
-    node_set = ch.mesh.node_sets[set_name]
+    node_set = try
+        ch.mesh.node_sets[set_name]
+    catch 
+        println("Node set $set_name not found")
+    end
 
     mesh = ch.mesh
 
@@ -321,14 +325,11 @@ function add_neumann_bc!(ch::ConstraintHandler{D,U,ET},
     for (face_id,fd) in fd_col 
 
         face_id ∉ face_set && continue
-
-
-        face_base      = ElementBaseFunctions(get_base(BaseInfo{2,K,U}()),fd.ΠsL2 |> x -> stretch(x,Val(U)))
+        face_base = ElementBaseFunctions(get_base(BaseInfo{2,K,U}()),fd.ΠsL2 |> x -> stretch(x,Val(U)))
 
         nodes2d = map(fd.face_node_ids.v.args[1]) do node_id
             project_to_2d_abs(ch.mesh[node_id],fd.dΩ.plane)
         end
-         
         dofs = get_dofs(dh,fd.face_node_ids)
 
         for (base_fun,dof) in zip(face_base,dofs)
@@ -347,4 +348,64 @@ function add_neumann_bc!(ch::ConstraintHandler{D,U,ET},
     end
 
     nothing
+end
+
+
+
+
+function add_neumann_bc!(
+	ch::ConstraintHandler{D,U,ET},
+    dh::DofHandler{D,U},
+	set_name::String,
+	f::F) where {D,U,K,ET<:ElType{K},F<:Function}
+	mesh = ch.mesh
+	topo = mesh.topo
+
+
+	gauss_nodes, gauss_weights = get_gauss_lobatto(K + 1)
+	
+	# Verify edge set exists and get edge indices
+	if !haskey(mesh.edge_sets, set_name)
+		throw(ArgumentError("Neumann BC currently only supports edge sets. '$set_name' not found."))
+	end
+	edge_ids = mesh.edge_sets[set_name]
+
+
+
+	# edge_node_ids = @MVector zeros(Int, K + 1)
+	edge_node_ids = zero(MVector{K+1,Int})
+	# Process each edge in the specified edge set
+	for edge_id in edge_ids
+		# Get edge topology and geometric nodes
+		node1_id, node2_id = topo.connectivity[1, 2][edge_id]
+		internal_node_ids = mesh.int_coords_connect[2][edge_id]
+		
+
+		# Create ordered node list for this edge [n1, internal nodes..., n2]
+		edge_node_ids[1] = node1_id
+        edge_node_ids[end] = node2_id
+        edge_node_ids[2:end-1] .= internal_node_ids
+
+		edge_length = norm(topo.nodes[node1_id] - topo.nodes[node2_id])
+
+		dofs = get_dofs(dh,edge_node_ids)
+
+
+		for q_point in eachindex(gauss_nodes)
+
+			ξ = gauss_nodes[q_point]
+			x = interpolate_edge(ξ,topo.nodes[node1_id],topo.nodes[node2_id])            
+			fval = f(x)
+			w = edge_length / 2 * gauss_weights[q_point]
+
+			for base_fun in 1:U*(K+1)
+				ϕi = lagrange_shape_function(base_fun,ξ,Val(K),Val(U))
+				dof = dofs[base_fun]
+				ch.n_bcs[dof] = fval ⊡ ϕi * w + get(ch.n_bcs,dof,0.0)
+			end
+		end
+	end
+
+	# Store boundary condition function and DOFs for potential updates
+	ch.n_bcs_funs[set_name] = (fun, collect(1:U))
 end

@@ -58,7 +58,6 @@ end
 
 function deactivate!(mf::NManifold)
     mf.id = -abs(mf.id)
-    # mf.is_root = false
     return mf
 end
 
@@ -67,7 +66,7 @@ is_active(m::Union{Node,NManifold}) = m.id > 0
 
 # is_active_root(mf::NManifold) = is_root(mf) && is_active(mf)
 
-#########################
+#########################  
 # Topology
 #########################
 using FixedSizeArrays
@@ -95,6 +94,7 @@ const ID_VEC_TYPE{T} = FixedSizeVector{T,Memory{T}}
         mat
     end
 
+    #TODO: adapt the type of the vector
     el_neighs::Dict{Int,Vector{Int}} = Dict{Int,Vector{Int}}()
 
     #Here also hanging nodes are contained wich are not found in the connectivity
@@ -397,8 +397,8 @@ function RootIterator{D,Idx}(topo::Topology{D}) where {D,Idx}
 end
 
 function RootIterator{D,1}(topo::Topology{D}) where {D}
-    # state_is_root::BitVector = is_root.(get_geo_vec(topo, Val(Idx)))
-    state_is_root = trues(length(get_nodes(topo)))
+    state_is_root::BitVector = is_active.(get_geo_vec(topo, Val(1)))
+    # state_is_root = trues(length(get_nodes(topo)))
     return RootIterator{D,1}(topo, state_is_root)
 end
 
@@ -422,12 +422,12 @@ function Base.iterate(r::RootIterator{D,Idx}, state=1) where {D,Idx}
 end
 
 
-function num_roots(geo_vec::AbstractVector{T}) where T<:NManifold
+function get_num_active_roots(geo_vec::AbstractVector{T}) where T<:NManifold
     return count(geo -> is_root(geo) && is_active(geo), geo_vec)
 end
 
 # Base.length(r::RootIterator{D,Idx}) where {D,Idx} = sum(r.state_is_root)
-Base.length(r::RootIterator{D,Idx}) where {D,Idx} = num_roots(get_geo_vec(r.topo, Val(Idx)))
+Base.length(r::RootIterator{D,Idx}) where {D,Idx} = get_num_active_roots(get_geo_vec(r.topo, Val(Idx)))
 
 
 #############################################
@@ -596,14 +596,14 @@ function iterate_element_edges(fun::F1,
         last_node_id = first(area_node_ids)
         for parent_edge_id in edge_ids
             push!(aq,parent_edge_id)
-
+ 
             while !isempty(aq)
                 root_edge_id = pop_last!(aq)
                 root_edge = edges[root_edge_id]
                 n1guess = get_edge_node_ids(topo, root_edge_id)[1] 
                 rev = n1guess != last_node_id
 
-                @inbounds if cond(root_edge)
+                if cond(root_edge)
                     node_id      = nodes_of_edges[root_edge_id][1+rev]
                     last_node_id = nodes_of_edges[root_edge_id][2-rev]
 
@@ -611,6 +611,7 @@ function iterate_element_edges(fun::F1,
                     continue
                 end
 
+                # TODO: CHeck if this must be ifelse 
          
                 push!(aq,root_edge.childs[2-rev])
                 push!(aq,root_edge.childs[rev+1])
@@ -710,50 +711,52 @@ the `root_area`, `facedata` and `topo` as arguments
 - `volume_id::Int`: The id of the volume to iterate over.
 - `cond::Function`: The condition to check if the area should be applied.
 """
-# function iterate_volume_areas(fun::F1, 
-# facedata_col::Dict{Int,FD}, 
-# topo::Topology{D}, volume_id::Int, 
-# cond::F2=is_root) where {D,F1,F2,FD} 
-
-# area_ids = get_volume_area_ids(topo, volume_id)
-# areas = get_areas(topo)
-# for area_id in area_ids
-#     area = areas[area_id]
-#     apply_f_on_unordered(cond, area, areas) do root_area
-#         fun(root_area, facedata_col[root_area.id], topo)
-#     end
-# end 
-# end
-
 function iterate_volume_areas(fun::F1, 
-    facedata_col::Dict{Int,FD},
-    topo::Topology{D},
-    volume_id::Int,
-    cond::F2=is_root) where {D,F1,F2,FD}
-    
+facedata_col::Dict{Int,FD}, 
+topo::Topology{D}, volume_id::Int, 
+cond::F2=is_root) where {D,F1,F2,FD} 
+
     area_ids = get_volume_area_ids(topo, volume_id)
     areas = get_areas(topo)
-    @no_escape begin
-        aq = CustStack(stack = @alloc(Int,1000))
-        
-        for area_id in area_ids
-            push!(aq,area_id)
-            while !isempty(aq)
-                root_area_id = pop_last!(aq)
-                root_area = areas[root_area_id]
-                
-                if cond(root_area)
-                    fun(root_area,facedata_col[root_area_id],topo)
-                    continue
-                end
-
-                for child_id in root_area.childs
-                    push!(aq,child_id)
-                end
-            end
+    for area_id in area_ids
+        area = areas[area_id]
+        apply_f_on_unordered(cond, area, areas) do root_area
+            fun(root_area, facedata_col[root_area.id], topo)
         end
-    end
+    end 
 end
+
+# function iterate_volume_areas(fun::F1, 
+#     facedata_col::Dict{Int,FD},
+#     topo::Topology{D},
+#     volume_id::Int,
+#     cond::F2=is_root) where {D,F1,F2,FD}
+    
+#     area_ids = get_volume_area_ids(topo, volume_id)
+#     areas = get_areas(topo)
+#     @no_escape begin
+#         aq = CustStack(stack = @alloc(Int,1000))
+        
+#         for area_id in area_ids
+#             push!(aq,area_id)
+#             while !isempty(aq)
+#                 root_area_id = pop_last!(aq)
+#                 root_area = areas[root_area_id]
+                
+#                 if cond(root_area)
+#                     fun(root_area,facedata_col[root_area_id],topo)
+#                     continue
+#                 end
+
+# TODO: Check if this must be ifelse 
+
+#                 for child_id in root_area.childs
+#                     push!(aq,child_id)
+#                 end
+#             end
+#         end
+#     end
+# end
 
 
 """

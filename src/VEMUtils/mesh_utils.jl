@@ -201,8 +201,8 @@ function create_voronoi_mesh(left::Tuple{Float64, Float64},
 	::Type{ElT}, smooth::Bool = true) where {ElT <: ElType}
 
 
-	x_coords = range(left[1], stop = right[1], length = nx + 1)
-	y_coords = range(left[2], stop = right[2], length = ny + 1)
+	x_coords = range(left[1], stop = right[1], length = 2)
+	y_coords = range(left[2], stop = right[2], length = 2)
 
 	L = right[1] - left[1]
 	T = right[2] - left[2]
@@ -818,6 +818,7 @@ function relax_voronoi3d_seeds(
 	seeds_in::AbstractVector{<:SVector{3,Float64}};
 	maxiters::Int=10, move_tol::Float64=1e-6, step::Float64=1.0,
 	min_spacing::Union{Nothing,Float64}=nothing, spacing_passes::Int=1, spacing_step::Float64=1.0,
+    verbose::Bool=false
 )::Vector{SVector{3,Float64}}
 
 	left3 = _as_SA(left)
@@ -891,6 +892,9 @@ function relax_voronoi3d_seeds(
 			end
 		end
 		seeds = new_seeds
+        if verbose
+            println("Iteration $it, max move: $dmax")
+        end
 		if dmax < move_tol
 			break
 		end

@@ -9,8 +9,8 @@ using Ju3VEM.VEMGeo: _refine!,_coarsen!
 using FixedSizeArrays
 import Ferrite as FR
 using Ju3VEM.VEMUtils: write_voronoi3d_vtk, relax_voronoi3d, relax_voronoi3d_seeds
+using Ju3VEM.VEMUtils: build_local_kel_and_f!, compute_error
 using Tensorial: contract
-include("../topo_tests/ana_error_compute.jl")
 
 const U = 1
 const K = 1
@@ -46,7 +46,7 @@ seeds = relax_voronoi3d_seeds(left, right, seeds; maxiters=15, move_tol=1e-7, st
 # mesh  = write_voronoi3d_vtk(left, right, seeds, "vtk/my_voronoi_mesh", StandardEl{K}; dedup_tol=1e-10)
 # mesh = relax_voronoi3d(left, right, seeds, StandardEl{K}; dedup_tol=1e-10)
 # mesh = create_voronoi_mesh_3d(left, right, seeds, StandardEl{K}; dedup_tol=1e-10)
-mesh = create_unit_rectangular_mesh(1,1,1, StandardEl{K})
+mesh = create_unit_rectangular_mesh(10,10,10, StandardEl{K})
 
 
 
@@ -73,111 +73,6 @@ add_dirichlet_bc!(ch,cv.dh,cv.facedata_col,"dirichlet",x -> ana_u_poisson(x))
 add_neumann_bc!(ch,cv.dh,cv.facedata_col,"neumann",x -> 1.0)
 
 
-function build_kel_quad_point!(
-    kelement::CachedMatrix{Float64},
-    rhs_element::CachedVector{Float64},
-    cv::CellValues{D,U,ET},
-    fe_cv::FR.CellValues,
-    Nv::AbstractVector,
-    ∇Nv::AbstractVector,
-    f::F,
-    qpoint::Int,
-    x::StaticVector{3,Float64},
-    mat_law::Helmholtz,
-    pars...) where {D,U,ET,F<:Function}
-
-
-    hvol = cv.volume_data.hvol
-    bc = cv.volume_data.vol_bc
-    x_scaled = (x .- bc)/hvol
-
-    dΩ = FR.getdetJdV(fe_cv,qpoint) 
-
-    #INFO: for linea materials the input grad is just a dummy
-    ℂ = eval_hessian(mat_law,∇Nv[1],pars...)
-
-    @inbounds for (i,∇Ni) in enumerate(∇Nv)
-        Nix  = Nv[i](x_scaled)
-        ∇Nixℂ = ℂ ⊡₂ ∇Ni(x_scaled) 
-        rhs_element[i] += f(x)⋅Nix*dΩ
-        for j in i:length(Nv)
-            ∇Njx = ∇Nv[j](x_scaled)
-            kelement[i,j] += ∇Nixℂ ⋅ ∇Njx *dΩ
-        end
-    end
-    kelement
-end
-
-function symmetrize_kel!(
-    kelement::CachedMatrix{Float64})
-
-    @assert size(kelement,1) == size(kelement,2) "kelement must be square"
-    @inbounds for i in axes(kelement,1)
-        for j in (i+1):size(kelement,2)  
-            kelement[j,i] = kelement[i,j]  
-        end
-    end
-    kelement
-end
-
-function build_local_kel_and_f!(
-    kelement::CachedMatrix{Float64},
-    rhs_element::CachedVector{Float64},
-    cv::CellValues{D,U,ET},
-    element_id::Int,
-    f::F,
-    fe_cv::FR.CellValues,
-    mat_law::Helmholtz) where {D,U,F<:Function,K,ET<:ElType{K}}
-
-
-    hvol = cv.volume_data.hvol
-
-    base3d = get_base(BaseInfo{3,K,U}())
-    L = length(base3d)
-    poly_base3d = get_base(BaseInfo{3,K-1,U}())
-    L_grad = length(poly_base3d)
-
-    
-    proj_s, proj = create_volume_vem_projectors(
-        element_id,cv.mesh,cv.volume_data,cv.facedata_col,cv.vnm)
-
-    ebf = ElementBaseFunctions(base3d,stretch(proj_s,Val(U)))
-
-    poly_type = eltype(ebf)
-    grad_type = Core.Compiler.return_type(∇p, Tuple{poly_type,Float64})
-
-  
-    ∇Nv = FixedSizeVector{grad_type}(undef,length(ebf))
-    Nv  = FixedSizeVector{poly_type}(undef,length(ebf))
-
-    for (i,p) in enumerate(ebf)
-        ∇Nv[i] = ∇p(p,hvol)
-        Nv[i]  = p |> poly_type
-    end
-
-    tets_local, l2g = tetrahedralize_volume(cv.mesh.topo, element_id)
-
-    setsize!(kelement,(length(ebf),length(ebf)))
-    setsize!(rhs_element,(length(ebf),))
-
-    for tet_local_ids in tets_local
-        tets_global_ids = SVector{4,Int}(l2g[id] for id in tet_local_ids)
-        tet_nodes = FR.Vec{D}.(get_nodes(cv.mesh.topo)[tets_global_ids])
-        FR.reinit!(fe_cv,tet_nodes)
-
-        for qpoint in 1:FR.getnquadpoints(fe_cv)
-            
-            x = FR.spatial_coordinate(fe_cv,qpoint,tet_nodes) |> SVector{3,Float64}
-            build_kel_quad_point!(kelement,rhs_element,cv,fe_cv,Nv,∇Nv,f,qpoint,x,mat_law)
-        end 
-    end
-
-    symmetrize_kel!(kelement)
-
-    stab       = (I-proj)'*(I-proj)*hvol/4
-    kelement .+= stretch(stab,Val(U))
-end
-
 
 function assembly(cv::CellValues{D,U,ET},
     f::F,
@@ -185,7 +80,7 @@ function assembly(cv::CellValues{D,U,ET},
     ass = Assembler{Float64}(cv)
 
 
-    mat_law = Helmholtz(Ψpoisson,D,U)
+    mat_law = Helmholtz(Ψpoisson,U,D)
     rhs_element = DefCachedVector{Float64}()
     kelement = DefCachedMatrix{Float64}()
 

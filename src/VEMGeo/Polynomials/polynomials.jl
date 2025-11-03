@@ -27,6 +27,91 @@ for D in 1:3, O in 1:6
 end
 
 
+
+
+
+struct PolynomialBase{D,O,U,L}
+    base::SVector{L,Monomial{Float64,D}}
+end
+function PolynomialBase{O,U}(base::SVector{L,Monomial{Float64,D}}) where {D,O,U,L}
+    PolynomialBase{D,O,U,L}(base)
+end
+function Base.getindex(pbase::PolynomialBase{D,O,U}, idx::Int) where {D,O,U}
+    U == 1 && return pbase.base[idx]
+
+    base_idx, v_idx = divrem(idx - 1, U) .+ (1, 1)
+    return SVector{U}(i != v_idx ? zero(Monomial{Float64,D}) : pbase.base[base_idx] for i in 1:U)
+end
+
+Base.length(::Type{PolynomialBase{D,O,U,L}}) where {D,O,U,L} = L*U
+Base.length(pb::PolynomialBase{D,O,U,L}) where {D,O,U,L} = L*U
+
+
+Base.eltype(::Type{PolynomialBase{D,O,U,L}}) where {D,O,U,L} = SVector{U,Monomial{Float64,D}}
+Base.eltype(::Type{PolynomialBase{D,O,1,L}}) where {D,O,L}   = Monomial{Float64,D}
+Base.eltype(::PolynomialBase{D,O,1,L}) where {D,O,L} = Monomial{Float64,D}
+Base.eltype(::PolynomialBase{D,O,U,L}) where {D,O,U,L} = SVector{U,Monomial{Float64,D}}
+# Base.eltype(pb::PolynomialBase{D,O,U}) where {D,O,U} = SVector{U,typeof(pb.base[1])}
+
+function Base.iterate(pb::PolynomialBase{D,O,U}, state::Int=1) where {D,O,U}
+    if state > length(pb)
+        return nothing
+    else
+        return (pb[state], state + 1)
+    end
+end
+
+
+function (pbase::PolynomialBase)(x::V) where {V<:AbstractVector}
+    return sum(pbase[i](x) for i in eachindex(pbase))
+end
+
+
+# Function to generate the polynomial base
+"""
+    get_base(::BaseInfo{D, O, U}) where {D, O, U} -> PolynomialBase{D,O,U,L}
+
+Generate the polynomial base for given dimensions `D`, order `O`, and unknowns `U`.
+
+# Arguments
+- `bi::BaseInfo{D, O, U}`: Base information.
+
+# Returns
+- `base::PolynomialBase{D,O,U,L}` - Polynomial base.
+"""
+@generated function get_base(::BaseInfo{D,O,U}) where {D,O,U}
+    base_len = div(prod(O+1:O+D), factorial(D))
+
+
+    base = Vector{Monomial{Float64,D}}(undef, base_len)
+    count = 1
+    max_order = O 
+    for order in 0:max_order, n in CartesianIndices(ntuple(_ -> order + 1, Val(D)))
+        exp = SVector(n.I .- 1)
+        (sum(exp) != order || max(exp...) > O) && continue
+        base[count] = Monomial(1.0, exp)
+        count += 1
+    end
+    base = PolynomialBase{O,U}(SVector{base_len}(base))
+
+    return :($base)
+end
+
+
+
+# function get_bi_base(::BaseInfo{D,O,U}) where {D,O,U}
+#     get_base(BaseInfo{D,O,U}(), Val(true))
+# end
+
+# this is needed to avoid world age issues
+for D in 1:3, O in 1:6
+    get_base(BaseInfo{D,O,1}())
+end
+
+
+
+
+
 struct Polynomial{T,D,L} <: Number
     coeffs::SVector{L,T}
     base::SVector{L,Monomial{Float64,D}}
@@ -51,25 +136,48 @@ function get_order(p::Polynomial{T,D,L}) where {T,D,L}
 end
 
 
-
-@generated function poly_eval(p::Polynomial{T,D,L},
+@generated function base_eval(::PolynomialBase{D,O,U,L},
     x::V,
     bc::StaticVector{D,T},
-    h::T) where {T,D,L,V<:AbstractVector{T}}
-    O = get_order(p) 
-    base = get_base(BaseInfo{D,O,1}())
-    
-    expr = Expr(:call, :+, 0)
-    for i in 1:L
-        m = base[i]
-        inner_expr = Expr(:call, :*, :(p.coeffs[$i]))
-        for d in 1:D
-            m.exp[d] == 0 && continue
-            push!(inner_expr.args, :(x_scaled[$d]^$(m.exp[d])))  # Use x_scaled!
-        end
-        push!(expr.args, inner_expr)
+    h::T) where {T,D,U,L,O,V<:AbstractVector{T}}
+    base = get_base(BaseInfo{D,O,U}())
+
+    L           = length(base)  
+    base_eltype = if U == 1
+        Float64
+    else
+        SVector{U,Float64}
     end
     
+    expr = Expr(:call, SVector{L,base_eltype})
+    for i in 1:L
+        base_idx, v_idx = divrem(i - 1, U) .+ (1, 1)
+        m = base.base[base_idx]
+
+        inner_expr = Expr(:call, :*,m.val)
+        for d in 1:D
+            m.exp[d] == 0 && continue
+            if m.exp[d] == 1
+                push!(inner_expr.args, :(x_scaled[$d]))
+            else
+                push!(inner_expr.args, :(x_scaled[$d]^$(m.exp[d])))  # Use x_scaled!
+            end
+        end
+        if U == 1
+            push!(expr.args, inner_expr)
+        else
+            base_idx, v_idx = divrem(i - 1, U) .+ (1, 1)
+            inner_Svec_call = Expr(:call, SVector{U,Float64})
+            for j in 1:U
+                if j == v_idx
+                    push!(inner_Svec_call.args, inner_expr)
+                else
+                    push!(inner_Svec_call.args, 0.0)
+                end
+            end
+            push!(expr.args, inner_Svec_call)
+        end
+    end
     return quote
         x_scaled = (x .- bc) / h
         $expr
@@ -77,7 +185,17 @@ end
 end
 
 
-# @inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = sum(c * b(x) for (c, b) in zip(p.coeffs, p.base))
+function poly_eval(p::Polynomial{T,D,L},
+    x::V,
+    bc::StaticVector{D,T},
+    h::T) where {T,D,L,V<:AbstractVector{T}}
+
+    O = get_order(p)
+    base_evaluated = base_eval(get_base(BaseInfo{D,O,1}()), x, bc, h)
+    return sum(p.coeffs[i] * base_evaluated[i] for i in 1:L)
+end
+
+
 @inline (p::Polynomial{T1})(x::V) where {T1<:Real,T2<:Real,V<:AbstractVector{T2}} = poly_eval(p, x, zero(x), 1.0)
 
 @inline function (p::Polynomial{T,D,L})(x::V, bc::StaticVector{D,T}, h::T) where {T,D,L,V<:AbstractVector{T}}
@@ -92,87 +210,6 @@ end
 
 
 
-
-
-
-struct PolynomialBase{D,O,U,L}
-    base::SVector{L,Monomial{Float64,D}}
-end
-function PolynomialBase{O,U}(base::SVector{L,Monomial{Float64,D}}) where {D,O,U,L}
-    PolynomialBase{D,O,U,L}(base)
-end
-function Base.getindex(pbase::PolynomialBase{D,O,U}, idx::Int) where {D,O,U}
-    U == 1 && return pbase.base[idx]
-
-    base_idx, v_idx = divrem(idx - 1, U) .+ (1, 1)
-    return SVector{U}(i != v_idx ? zero(Monomial{Float64,D}) : pbase.base[base_idx] for i in 1:U)
-end
-
-Base.length(pb::PolynomialBase{D,O,U}) where {D,O,U} = length(pb.base) * U
-Base.eltype(pb::PolynomialBase{D,O,1}) where {D,O} = typeof(pb.base[1])
-Base.eltype(pb::PolynomialBase{D,O,U}) where {D,O,U} = SVector{U,typeof(pb.base[1])}
-
-function Base.iterate(pb::PolynomialBase{D,O,U}, state::Int=1) where {D,O,U}
-    if state > length(pb)
-        return nothing
-    else
-        return (pb[state], state + 1)
-    end
-end
-
-
-function (pbase::PolynomialBase)(x::V) where {V<:AbstractVector}
-    return sum(pbase[i](x) for i in eachindex(pbase))
-end
-
-
-# Function to generate the polynomial base
-"""
-    get_base(::BaseInfo{D, O, U},::Val{BB} = Val(false) where {D, O, U} -> PolynomialBase{D,O,U,L}
-
-Generate the polynomial base for given dimensions `D`, order `O`, and unknowns `U`.
-
-# Arguments
-- `bi::BaseInfo{D, O, U}`: Base information.
-- `::Val{BB} = Val(false)`: wheather to build a bilinear base or not
-
-# Returns
-- `base::PolynomialBase{D,O,U,L}` - Polynomial base.
-"""
-@generated function get_base(::BaseInfo{D,O,U}, ::Val{BB}=Val(false)) where {D,O,U,BB}
-    @assert isa(BB, Bool) "SB must be bool or true"
-
-    base_len = if BB
-        (O + 1)^D
-    else
-        div(prod(O+1:O+D), factorial(D))
-    end
-
-
-    base = Vector{Monomial{Float64,D}}(undef, base_len)
-    count = 1
-    max_order = O + BB
-    for order in 0:max_order, n in CartesianIndices(ntuple(_ -> order + 1, Val(D)))
-        exp = SVector(n.I .- 1)
-        (sum(exp) != order || max(exp...) > O) && continue
-        base[count] = Monomial(1.0, exp)
-        count += 1
-    end
-    base = PolynomialBase{O,U}(SVector{base_len}(base))
-
-    return :($base)
-end
-
-
-
-function get_bi_base(::BaseInfo{D,O,U}) where {D,O,U}
-    get_base(BaseInfo{D,O,U}(), Val(true))
-end
-
-# this is needed to avoid world age issues
-for D in 1:3, O in 1:6
-    get_base(BaseInfo{D,O,1}())
-end
 
 
 
@@ -326,10 +363,18 @@ function sol_proj(b::PolynomialBase{D,O,U,L},
     sol::AbstractVector, Π_star::StretchedMatrix) where {D,O,U,L}
 
 
-    v = SVector{U}(begin
-        c = matmul(Π_star.data, @view(sol[i:U:end]))
-        Polynomial(c, b.base)
-    end for i in 1:U)
+    v = @no_escape begin 
+        _temp1 = @alloc(eltype(sol),size(Π_star.data,2))
+        _temp2 = @alloc(eltype(sol),size(Π_star.data,1))
+
+        v = SVector{U}(begin
+            # c = matmul(Π_star.data, @view(sol[i:U:end]))
+            _temp1 .= @views sol[i:U:end] 
+            matmul!(_temp2,Π_star.data,_temp1)
+            Polynomial(_temp2, b.base)
+        end for i in 1:U)
+        v
+    end
 
     if U == 1
         return only(v)

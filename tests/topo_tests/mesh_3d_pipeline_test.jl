@@ -76,7 +76,7 @@ using Ju3VEM.VEMUtils: create_volume_dmat
     abs_volume = vol_data.integrals[1]
     bmat3d = create_volume_bmat(1, mesh, vol_data.vol_bc, vol_data.hvol, abs_volume, facedata_col, ntl)
 
-    dmat3d = create_volume_dmat(1, mesh, vol_data.vol_bc, vol_data.hvol, facedata_col, vol_data, abs_volume, ntl)
+    dmat3d = create_volume_dmat(1, mesh,  facedata_col, vol_data, ntl)
 
     gmat3d = SMatrix{length(base3d),length(base3d)}(bmat3d*dmat3d)
 
@@ -133,7 +133,7 @@ rep =  begin
     abs_volume = vol_data.integrals[1]
     # bmat3d = create_volume_bmat(1, mesh, vol_data.vol_bc, vol_data.hvol, abs_volume, facedata_col, ntl)
 
-    # dmat3d = create_volume_dmat(1, mesh, vol_data.vol_bc, vol_data.hvol, facedata_col, vol_data, abs_volume, ntl)
+    # dmat3d = create_volume_dmat(1, mesh, facedata_col, vol_data, ntl)
 
     # gmat3d = SMatrix{length(base3d),length(base3d)}(bmat3d*dmat3d)
 
@@ -213,7 +213,7 @@ begin
     display(u_local_perm)
     display(u_proj)
 
-    dm3d = create_volume_dmat(1, mesh, vol_data.vol_bc, vol_data.hvol, facedata_col, vol_data, abs_volume, vnm)
+    dm3d = create_volume_dmat(1, mesh, facedata_col, vol_data, vnm)
 
 
     # test_fun(x) = 1/hvol*(x[1]-bcvol[1]) 
@@ -274,7 +274,7 @@ begin
 
     proj_s, proj = create_volume_vem_projectors(1, mesh, vol_data, facedata_col, vnm)
 
-    dm3d = create_volume_dmat(1, mesh, vol_data.vol_bc, vol_data.hvol, facedata_col, vol_data, abs_volume, vnm)
+    dm3d = create_volume_dmat(1, mesh, facedata_col, vol_data, vnm)
 
     ft = FaceTriangulations3D(mesh.topo)
 

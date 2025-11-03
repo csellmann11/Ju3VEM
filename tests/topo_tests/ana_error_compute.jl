@@ -1,5 +1,6 @@
 import Ferrite 
 import Ferrite.Tensors as TS
+import Ferrite.ForwardDiff as FFD
 function compute_error(u_ana::F,
     cv::CellValues{D,U,ET},
     u::AbstractVector{Float64}) where {D,U,F<:Function,K,ET<:ElType{K}}
@@ -7,27 +8,22 @@ function compute_error(u_ana::F,
     base3d = get_base(BaseInfo{3,K,U}())
 
     ip = Ferrite.Lagrange{Ferrite.RefTetrahedron,1}()^U 
-    qr = Ferrite.QuadratureRule{Ferrite.RefTetrahedron}(5)
+    qr = Ferrite.QuadratureRule{Ferrite.RefTetrahedron}(1)
     fr_cv = Ferrite.CellValues(qr,ip)
 
 
     topo = cv.mesh.topo
 
     l2_error = 0.0
-    # h1_error = 0.0
-
-    first = true
+    h1_error = 0.0
 
     for element in RootIterator{4}(cv.mesh.topo)
         reinit!(element.id,cv)
 
         hvol = cv.volume_data.hvol
-        bc = cv.volume_data.vol_bc
-        abs_volume = cv.volume_data.integrals[1]
-        vol_data = cv.volume_data
-
+        bc = cv.volume_data.vol_bc 
         
-        proj_s, proj = create_volume_vem_projectors(
+        proj_s, _ = create_volume_vem_projectors(
             element.id,cv.mesh,cv.volume_data,cv.facedata_col,cv.vnm)
  
 
@@ -42,6 +38,8 @@ function compute_error(u_ana::F,
 
 
         uπ   = sol_proj(base3d,uel,proj_s |> x -> stretch(x,Val(U)))
+        # display(uπ)
+        # display(uel)
 
         tets_local, l2g = tetrahedralize_volume(topo, element.id)
 
@@ -54,10 +52,16 @@ function compute_error(u_ana::F,
                 dΩ = Ferrite.getdetJdV(fr_cv,qpoint) 
                 quad_coord = Ferrite.spatial_coordinate(fr_cv,qpoint,tet_nodes)
                 u_anax = u_ana(quad_coord)
+                ∇u_anax = FFD.jacobian(x -> u_ana(x) |> SVector{U},quad_coord)
                 quad_coord_scaled = (quad_coord .- bc)/hvol
                 
+
                 uπx   = uπ(quad_coord_scaled)
+                ∇uπx = ∇x(uπ,hvol,quad_coord_scaled) |> SMatrix{U,D}
+
+    
                 l2_error += norm(u_anax .- uπx)^2 * dΩ
+                h1_error += norm(∇u_anax .- ∇uπx)^2 * dΩ
             end
 
         end
@@ -65,7 +69,7 @@ function compute_error(u_ana::F,
 
     end
 
-    return sqrt(l2_error)
+    return sqrt(l2_error), sqrt(h1_error)
 end
 
 

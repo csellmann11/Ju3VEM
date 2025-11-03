@@ -45,10 +45,6 @@ end
 @inline FlattenVecs{N,T}() where {N,T} = 
     FlattenVecs{N,T,Vector{T}}()
 
-# function FlattenVecs{N,T}(lenghts::Vararg{Int,N}) where {N,T}
-#     return FlattenVecs(ntuple(i -> Vector{T}(undef,lenghts[i]), Val(N))...)
-# end
-
 
 Base.@propagate_inbounds Base.getindex(t::FlattenVecs, idx::Int) = t.v[idx]  
 Base.@propagate_inbounds Base.setindex!(t::FlattenVecs, val, idx::Int) = t.v[idx] = val
@@ -58,5 +54,10 @@ Base.size(t::FV) where FV<:FlattenVecs = (length(t),)
 
 Base.eltype(::FlattenVecs{N,T})  where {N,T} = T
 
+
+@inline Base.@propagate_inbounds get_first(v::FlattenVecs)  = v.v.args[1]
+@inline Base.@propagate_inbounds get_second(v::FlattenVecs) = v.v.args[2]
+@inline Base.@propagate_inbounds get_third(v::FlattenVecs)  = v.v.args[3]
+@inline Base.@propagate_inbounds get_fourth(v::FlattenVecs) = v.v.args[4]
 
 

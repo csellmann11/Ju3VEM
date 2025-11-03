@@ -12,10 +12,23 @@ function downstream_deactivate!(mf::NManifold{N},topo::Topology{D}) where {N,D}
     end
 end 
 
+function _coarsen!(edge::Edge{D}, topo::Topology{D}) where D
+    parent_id = edge.parent_id
+    parent_id == 0 && return
+    parent = get_edges(topo)[parent_id]
+    !is_active(parent) && return
+    bottom_up_coarsen_children!(parent, topo)
+    mid_node_id = reactivate_parent_and_get_center!(parent, topo)
+    deactivate!(get_nodes(topo)[mid_node_id])
+    for child_id in parent.childs
+        deactivate!(get_edges(topo)[child_id])
+    end
+end
 
 function _coarsen!(area::Area{D}, topo::Topology{D}) where D
     parent_id = area.parent_id
-    @assert parent_id != 0 "Area has no parent"
+    # @assert parent_id != 0 "Area has no parent"
+    parent_id == 0 && return
     parent = get_areas(topo)[parent_id]
     !is_active(parent) && return
 
@@ -31,7 +44,8 @@ end
 
 function _coarsen!(volume::Volume{D}, topo::Topology{D}) where D
     parent_id = volume.parent_id
-    @assert parent_id != 0 "Volume has no parent"
+    # @assert parent_id != 0 "Volume has no parent"
+    parent_id == 0 && return
     parent = get_volumes(topo)[parent_id]
     !is_active(parent) && return
 
@@ -63,16 +77,15 @@ function reactivate_parent_and_get_center!(parent::NManifold{N}, topo::Topology{
     activate!(parent)
     mid_node_id = find_single_intersec(topo.connectivity[1, N], parent.childs)
     deactivate!(get_nodes(topo)[mid_node_id])
-    return mid_node_id
+    return mid_node_id 
 end
 
 function deactivate_submanifolds_touching_center!(parent::Area{D}, topo::Topology{D}, mid_node_id::Int) where D
     for child_id in parent.childs
         for edge_id in get_area_edge_ids(topo, child_id)
-            n1, n2 = get_edge_node_ids(topo, edge_id)
-            if n1 == mid_node_id || n2 == mid_node_id
-                downstream_deactivate!(get_edges(topo)[edge_id], topo)
-            end
+
+            mid_node_id ∉ get_edge_node_ids(topo, edge_id) && continue
+            downstream_deactivate!(get_edges(topo)[edge_id], topo)
         end
     end
     return nothing
@@ -85,14 +98,19 @@ function deactivate_submanifolds_touching_center!(
 
     for child_id in parent.childs
         for face_id in get_volume_area_ids(topo, child_id)
-            if mid_node_id in get_area_node_ids(topo, face_id)
-                downstream_deactivate!(get_areas(topo)[face_id], topo)
-                for edge_id in get_area_edge_ids(topo, face_id)
-                    n1id, n2id = get_edge_node_ids(topo, edge_id) 
-                    if n1id == mid_node_id || n2id == mid_node_id
-                        downstream_deactivate!(get_edges(topo)[edge_id], topo)
-                    end
-                end
+
+            mid_node_id ∉ get_area_node_ids(topo, face_id) && continue
+
+            face = get_areas(topo)[face_id]
+  
+            if !isempty(face.childs)
+                _coarsen!(get_areas(topo)[first(face.childs)], topo)
+            end
+
+            downstream_deactivate!(get_areas(topo)[face_id], topo)
+            for edge_id in get_area_edge_ids(topo, face_id)
+                mid_node_id ∉ get_edge_node_ids(topo, edge_id) && continue
+                downstream_deactivate!(get_edges(topo)[edge_id], topo)
             end
         end
     end

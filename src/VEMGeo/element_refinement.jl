@@ -1,7 +1,7 @@
 using SmallCollections
 
 function _refine!(edge::Edge{D},topo::Topology{D}) where D
-    edge_id = edge.id
+    edge_id = edge.id 
 
     if !edge.is_root
         mid_node_id = find_single_intersec(get_edge_node_ids(topo)[edge.childs])
@@ -85,6 +85,11 @@ function _refine!(area::Area{D},topo::Topology{D}) where D
         new_node_id = find_single_intersec(get_area_node_ids(topo),area.childs)
         activate!(get_nodes(topo)[new_node_id])
         # reactivate childs and inner edges
+        for edge_id in get_area_edge_ids(topo,area_id)
+            edge = get_edges(topo)[edge_id]
+            _refine!(edge,topo)
+        end
+
         for child_id in area.childs
             activate!(get_areas(topo)[child_id])
             for edge_id in get_area_edge_ids(topo,child_id)
@@ -125,7 +130,8 @@ end
 
 
 
-function _refine!(volume::Volume{D},topo::Topology{D}) where D
+function _refine!(volume::Volume{D},topo::Topology{D};
+    non_planar = true) where D
     volume_id = volume.id
 
     if !is_root(volume)
@@ -145,15 +151,15 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
         area = get_areas(topo)[area_id]
         face_to_center[area_id] = _refine!(area,topo) 
     end
+ 
 
-    was_once_refined = !isempty(volume.childs)
-   
-    if !was_once_refined
+    if isempty(volume.childs) # Volume was never refined
         new_node_coords = mean(get_nodes(topo)[n_id] for n_id in volume_nodes)
         new_node_id = add_node!(new_node_coords,topo)
     else
         new_node_id = find_single_intersec(get_volume_node_ids(topo),volume.childs)
         activate!(get_nodes(topo)[new_node_id])
+
         # reactivate childs and inner faces/edges
         for child_id in volume.childs
             activate!(get_volumes(topo)[child_id])
@@ -211,6 +217,21 @@ function _refine!(volume::Volume{D},topo::Topology{D}) where D
             f1c = face_to_center[adj_faces[1]]
             f2c = face_to_center[adj_faces[2]]
             boundary_quad_ids[boundary_quad_counter] = add_area!(SA[mid, f1c, new_node_id, f2c], topo, 0, volume.refinement_level)
+            
+            # if non_planar
+            #     last_area_id = boundary_quad_ids[boundary_quad_counter]
+            #     last_area_added = get_areas(topo)[last_area_id]
+ 
+            #     # triangulate the face if its non-planar
+            #     tria1_id = add_area!(SA[mid, f1c, new_node_id], topo, last_area_id, volume.refinement_level)
+            #     tria2_id = add_area!(SA[new_node_id, f2c, mid], topo, last_area_id, volume.refinement_level)
+            #     append!(last_area_added.childs, [tria1_id, tria2_id])
+            #     last_area_added.is_root = false
+
+            #     boundary_quad_ids[boundary_quad_counter] = tria1_id
+            #     boundary_quad_counter += 1
+            #     boundary_quad_ids[boundary_quad_counter] = tria2_id
+            # end
             boundary_quad_counter += 1
         end
 

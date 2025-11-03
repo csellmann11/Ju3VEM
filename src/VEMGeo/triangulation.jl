@@ -396,7 +396,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     @assert N ≥ 4 "Need at least 4 non-coplanar points"
 
  
-    tol = 1e01*eps(T)
+    tol = 1000*(eps(T)) #TODO: fix this tolerance
     # tol = sqrt(eps(T))
     # Interior reference from seed tetra (remains inside as hull grows)
 
@@ -413,24 +413,67 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     end
     @assert i2 != -1 "Points appear to be collinear"
     # pick i3 not collinear
+    # i3 = -1
+    # for i in 3:N
+    #     if i != i1 && i != i2
+    #         n = cross(points[i2] - points[i1], points[i] - points[i1])
+    #         if norm(n) > tol
+    #             i3 = i
+    #             break
+    #         end
+    #     end
+    # end
+    # @assert i3 != -1 "Points appear to be collinear"
+    # i3 = i3::Int
+    # # pick i4 not coplanar
+    # i4 = -1
+    # for i in 4:N
+    #     if i != i1 && i != i2 && i != i3
+    #         vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
+    #         if abs(vol) > tol
+    #             i4 = i
+    #             break
+    #         end
+    #     end
+    # end
+    # pick i3 not collinear
     i3 = -1
     for i in 3:N
         if i != i1 && i != i2
-            n = cross(points[i2] - points[i1], points[i] - points[i1])
-            if norm(n) > tol
+            v1 = points[i2] - points[i1]
+            v2 = points[i] - points[i1]
+            n_vec = cross(v1, v2)
+            
+            # Robust, relative check for non-collinearity
+            if norm(n_vec) > tol * norm(v1) * norm(v2)
                 i3 = i
                 break
             end
         end
     end
     @assert i3 != -1 "Points appear to be collinear"
-    i3 = i3::Int
+
+    # Define the base triangle vectors for the volume check
+    p1, p2, p3 = points[i1], points[i2], points[i3]
+    v1 = p2 - p1
+    v2 = p3 - p1
+    v3_base = p3 - p2
+
+    # Calculate a characteristic length from the base triangle
+    # This defines the "scale" of the geometry
+    char_length = max(norm(v1), norm(v2), norm(v3_base))
+    # The characteristic volume to compare against
+    char_volume = char_length^3
+
     # pick i4 not coplanar
     i4 = -1
     for i in 4:N
         if i != i1 && i != i2 && i != i3
-            vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
-            if abs(vol) > tol
+            vol = signed_tet_volume(p1, p2, p3, points[i])
+            
+            # Robust, relative check for non-coplanarity
+            # Is the volume significant compared to a cube of its characteristic length?
+            if abs(vol) > tol * char_volume
                 i4 = i
                 break
             end

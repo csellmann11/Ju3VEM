@@ -98,7 +98,7 @@ function create_volume_bmat(volume_id::Int,
 
     iterate_volume_areas(facedata_col,topo,volume_id) do _, face_data, _
    
-        face_normal,_ = get_outward_normal(bcvol,face_data)
+        face_normal = get_outward_normal(bcvol,face_data)
         ΠsL2                    = face_data.ΠsL2
         face_node_ids           = face_data.face_node_ids
 
@@ -128,10 +128,11 @@ function create_volume_bmat(volume_id::Int,
 
             # takes the res of the prev loop v = ∫ m2d * (∇m3d ⋅ n) ∂Ω for all m2d in base_2d
             # computes ΠsL2 * v and directly stores the result in bmat
-            for (nc,colv) in enumerate(eachcol(ΠsL2))
+            for nc in axes(ΠsL2,2)
+                colv = SVector{length(base_2d)}(ΠsL2[i,nc] for i in axes(ΠsL2,1))
 
                 col_id          = get_local_id(volume_node_mapping,face_node_ids[nc])
-                bmat[i,col_id] += dot(colv,integrated_vals)
+                bmat[i,col_id] += colv ⋅ integrated_vals
             end
 
             
@@ -154,33 +155,33 @@ function create_volume_bmat(volume_id::Int,
 end
 
 
-function manual_K2_gmat(vol_data::VolumeIntegralData,hvol::Float64,abs_volume::Float64)
+# function manual_K2_gmat(vol_data::VolumeIntegralData,hvol::Float64,abs_volume::Float64)
 
-    base3d = get_base(BaseInfo{3,2,1}()).base
+#     base3d = get_base(BaseInfo{3,2,1}()).base
     
 
-    gmat = FixedSizeMatrix{Float64}(undef,length(base3d),length(base3d))
+#     gmat = MMatrix{length(base3d),length(base3d),Float64}(undef)
 
-    for (i,mi) in enumerate(base3d)
-        i == 1 && continue
-        ∇mi = ∇(mi,hvol)
-        for (j,mj) in enumerate(base3d)
-            j == 1 && continue
-            ∇mj = ∇(mj,hvol)
+#     for (i,mi) in enumerate(base3d)
+#         i == 1 && continue
+#         ∇mi = ∇(mi,hvol)
+#         for (j,mj) in enumerate(base3d)
+#             j == 1 && continue
+#             ∇mj = ∇(mj,hvol)
 
-            gmat[i,j] = sum(
-                compute_volume_integral_unshifted(∇mi[k]*∇mj[k],vol_data,hvol) for k in 1:3
-            )
-        end
-    end
+#             gmat[i,j] = sum(
+#                 compute_volume_integral_unshifted(∇mi[k]*∇mj[k],vol_data,hvol) for k in 1:3
+#             )
+#         end
+#     end
 
-    for (i,mi) in enumerate(base3d)
-        gmat[1,i] = compute_volume_integral_unshifted(mi,vol_data,hvol)/abs_volume
-    end
-    return gmat
+#     for (i,mi) in enumerate(base3d)
+#         gmat[1,i] = compute_volume_integral_unshifted(mi,vol_data,hvol)/abs_volume
+#     end
+#     return SMatrix(gmat)
     
 
-end
+# end
 
 
 function _is_vertex_like_node(id::Int,mesh::Mesh)::Bool 
@@ -201,6 +202,7 @@ function _handle_face_moments!(
     vol_id,
     hvol
 ) where {K,ET<:ElType{K}}
+
 
     topo = mesh.topo
     mombase2d         = get_base(BaseInfo{2,K-2,1}())
@@ -245,6 +247,8 @@ function _handle_volume_moments!(
     vol_data::VolumeIntegralData,
     abs_volume::Float64
 ) where {K,ET<:ElType{K}}
+ 
+    K ≤ 1 && return nothing
 
     mombase3d = get_base(BaseInfo{3,K-2,1}()).base
     moment_ids = mesh.int_coords_connect[4][vol_id]
@@ -265,14 +269,13 @@ function _handle_volume_moments!(
 end
 
 function create_volume_dmat(volume_id::Int,
-    mesh::Mesh{3,ET},
-    bcvol,hvol,
+    mesh::Mesh{3,ET}, 
     facedata_col::Dict{Int,<:FaceData{3,L}},
-    vol_data::VolumeIntegralData,abs_volume::Float64,
+    vol_data::VolumeIntegralData,
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
-    hvol = vol_data.hvol
-    bcvol = vol_data.vol_bc
+    hvol = vol_data.hvol 
+    bcvol = vol_data.vol_bc 
     abs_volume = vol_data.integrals[1]
 
  
@@ -286,9 +289,7 @@ function create_volume_dmat(volume_id::Int,
 
         !_is_vertex_like_node(node_id,mesh) && continue
 
-        for (i,m) in enumerate(base3d)
-            dmat[local_pos,i] = m(mesh[node_id],bcvol,hvol)
-        end
+        dmat[local_pos,:] .= base_eval(base3d,mesh[node_id],bcvol,hvol)
     end
 
 
@@ -322,7 +323,7 @@ function create_volume_vem_projectors(
     bcvol       = vol_data.vol_bc
 
     base3d = get_base(BaseInfo{3,K,1}()).base
-    dmat = create_volume_dmat(volume_id,mesh,bcvol,hvol,facedata_col,vol_data,abs_volume,volume_node_mapping)
+    dmat = create_volume_dmat(volume_id,mesh,facedata_col,vol_data,volume_node_mapping)
 
     bmat = create_volume_bmat(volume_id,mesh,bcvol,hvol,abs_volume,facedata_col,volume_node_mapping)
     gmat = static_matmul(bmat,dmat,Val((length(base3d),length(base3d))))

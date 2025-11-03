@@ -27,7 +27,8 @@ function _create_facedata_col(mesh::Mesh{D,StandardEl{K}}) where {D,K}
 
     for face in RootIterator{3}(topo)
         facedata_col[face.id] = h1_projectors!(
-            face.id, mesh, 
+            face.id, 
+            mesh, 
             precompute_face_monomials(face.id, topo, Val(K_MAX))
             )
     end
@@ -142,25 +143,20 @@ value = ϕ_i(x)  # where x is a coordinate in the element's local coordinate sys
 """
 struct ElementBaseFunctions{D,
     O,U,L,
-    M<:StretchedMatrix,
-    V<:Union{Polynomial{Float64,D,L},SVector{U,Polynomial{Float64,D,L}}}} <: AbstractVector{V}
+    M<:StretchedMatrix} <: AbstractVector{SVector{U,Polynomial{Float64,D,L}}}
 
     base::PolynomialBase{D,O,U,L}
     Π_star::M
 
 
-    function ElementBaseFunctions(base::PolynomialBase{D,O,1,L}, Π_star::M) where {D,O,L,M}
-        new{D,O,1,L,M,Polynomial{Float64,D,L}}(base, Π_star)
-    end
-
     function ElementBaseFunctions(base::PolynomialBase{D,O,U,L}, Π_star::M) where {D,O,U,L,M}
-        new{D,O,U,L,M,SVector{U,Polynomial{Float64,D,L}}}(base, Π_star)
+        new{D,O,U,L,M}(base, Π_star)
     end
 end
 
 Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
 Base.size(ebf::ElementBaseFunctions) = (size(ebf.Π_star, 2),)
-Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M,V}}) where {D,O,U,L,M,V} = V
+Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M}}) where {D,O,U,L,M} = SVector{U,Polynomial{Float64,D,L}}
 Base.getindex(ebf::ElementBaseFunctions, idx::Int) = unit_sol_proj(ebf.base,idx,ebf.Π_star)
 
 

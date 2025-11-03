@@ -40,10 +40,10 @@ Base.conj(m::Monomial{T,D}) where {T,D} = Monomial(conj(m.val),m.exp)
 
 Evaluate a monomial at a given point `x`.
 """
-function (m::Monomial{T1,D})(x::V) where {T1<:Real,T2<:Real,D,V<:AbstractVector{T2}}
-    @assert length(x) == D "length of x must be equal to D, got $(length(x))"
-    prod(xi^expi for (xi,expi) in zip(x,m.exp); init = m.val)
-end
+# function (m::Monomial{T1,D})(x::V) where {T1<:Real,T2<:Real,D,V<:AbstractVector{T2}}
+#     @assert length(x) == D "length of x must be equal to D, got $(length(x))"
+#     prod(xi^expi for (xi,expi) in zip(x,m.exp); init = m.val)
+# end
 
 """
     (m::Monomial{T1,D})(x::V1,bc::V2,h::T) where {T<:Real,T1<:Real,T2<:Real,T3<:Real,D,
@@ -57,13 +57,21 @@ Evaluate a monomial at the scaled location `(x-bc)/h`
 - `bc::V2`: Offset
 - `h::T`: Scale factor.
 """
-function (m::Monomial{T1,D})(x::V1,bc::V2,h::T) where {T<:Real,T1<:Real,T2<:Real,T3<:Real,D,
-    V1<:AbstractVector{T2},V2<:AbstractVector{T3}}
+# function (m::Monomial{T1,D})(x::V1,bc::V2,h::T) where {T<:Real,T1<:Real,T2<:Real,T3<:Real,D,
+#     V1<:AbstractVector{T2},V2<:AbstractVector{T3}}
 
-    @assert length(x) == D "length of x must be equal to D, got $(length(x))"
-    @assert length(bc) == D "length of bc must be equal to D, got $(length(bc))"
+#     @assert length(x) == D "length of x must be equal to D, got $(length(x))"
+#     @assert length(bc) == D "length of bc must be equal to D, got $(length(bc))"
 
-    prod(((xi-bci)/h)^expi for (xi,expi,bci) in zip(x,m.exp,bc); init = m.val)
+#     prod(((xi-bci)/h)^expi for (xi,expi,bci) in zip(x,m.exp,bc); init = m.val)
+# end
+
+function (m::Monomial{T,D})(x::StaticVector{D,T},bc::StaticVector{D,T},h::T) where {T,D}
+    x_scaled = (x - bc)/h
+    prod(x_scaled .^ m.exp)*m.val
+end
+function (m::Monomial{T,D})(x::StaticVector{D,T}) where {T,D}
+    prod(xi^expi for (xi,expi) in zip(x,m.exp); init = m.val)
 end
 
 import Base: heads,tail
@@ -80,7 +88,7 @@ function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {
     end
     
     idxs_tail = tail(idxs)
-    if length(idxs_tail) > 0  
+    if N > 1  
         return derivative(new_exp,val/h*exp_val,h,idxs_tail...)
     else
         return val/h*exp_val, new_exp

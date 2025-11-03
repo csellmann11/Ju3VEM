@@ -2,6 +2,26 @@ module Ju3VEM
 
 using Reexport
 
+include("StructMechanics/material_laws.jl")
+@reexport using .MaterialLaws
+
+
+import Tensorial 
+using Tensorial: ⊡₂
+using StaticArrays
+
+function Tensorial.:⊡₂(a::V1,b::V2) where {V1<:StaticArray,V2<:StaticArray}
+    res = Tensorial.Tensor(a) ⊡₂ Tensorial.Tensor(b)
+
+    if res isa Tensorial.Tensor
+        return SArray{Tuple{size(res)...}}(res.data)
+    else
+        return res
+    end
+end
+
+export ⊡₂
+
 module VEMGeo
     # Core dependencies commonly used across files
     using StaticArrays
@@ -45,7 +65,7 @@ module VEMGeo
     # Triangulation and 3D utilities (flattened; no submodules inside the file)
     include("VEMGeo/triangulation.jl")
     include("VEMGeo/integration.jl")
-    
+    include("VEMGeo/neighbour_search.jl")
 
     # include("mesh.jl")
     # include("face_projector.jl")
@@ -75,7 +95,7 @@ module VEMGeo
 
         # Polynomials
         derivative, ∇, ∂,
-        get_base, get_bi_base, sol_proj, grad_sol_proj, get_ϕi, ∇p, ∇x, poly_grad,
+        get_base, sol_proj, grad_sol_proj, get_ϕi, ∇p, ∇x, poly_grad,
 
         # Stretched matrices
         stretch,
@@ -99,7 +119,7 @@ module VEMGeo
         precompute_volume_monomials, compute_volume_integral_unshifted,
         
         # Topology transforms
-        transform_topology_planar!
+        transform_topology_planar!, create_element_neighbour_list
 end # module VEMGeo
 
 # Re-export the VEMGeo API from the top-level module
@@ -111,14 +131,16 @@ module VEMUtils
     using LinearAlgebra
     using FixedSizeArrays
     using ..VEMGeo
-    import ..VEMGeo: FlattenVecs, iterate_volume_areas, iterate_element_edges
+    import ..VEMGeo: FlattenVecs, iterate_volume_areas, iterate_element_edges, lagrange_shape_function, interpolate_edge
     import ..VEMGeo: get_iterative_area_vertex_ids, getexp, unit_sol_proj, stretch
-    import ..VEMGeo: get_gauss_legendre, get_gauss_lobatto
+    import ..VEMGeo: get_gauss_legendre, get_gauss_lobatto, base_eval
+    import ..MaterialLaws: eval_hessian, eval_gradient_and_hessian, Helmholtz
+    using Tensorial: ⊡₂
     using Octavian
     using Bumper
     using SparseArrays
     using WriteVTK
-    using Static
+    import Static
 
     include("mesh.jl")
     include("face_projector.jl")
@@ -132,7 +154,8 @@ module VEMUtils
     include("VEMUtils/mesh_utils.jl")
     include("VEMUtils/vtkexports.jl")
     include("cached_arrays.jl")
-
+    include("VEMUtils/element_routine.jl")
+    include("VEMUtils/post_processing.jl")
     export 
         # Mesh and element types
         Mesh, ElType, StandardEl, SerendipityEl,
@@ -164,30 +187,25 @@ module VEMUtils
         # VTK exports
         write_vtk,
         # Cached arrays
-        CachedArray, CachedMatrix, CachedVector, DefCachedMatrix, DefCachedVector, setsize!
+        CachedArray, CachedMatrix, CachedVector, DefCachedMatrix, DefCachedVector, setsize!,
 
+        # Element routine
+        build_kel_quad_point!, symmetrize_kel!, build_local_kel_and_f!,
+        # Post processing
+        compute_error
 end # module VEMUtils
 
 @reexport using .VEMUtils
 
-include("StructMechanics/material_laws.jl")
-@reexport using .MaterialLaws
+using PrecompileTools: @compile_workload    # this is a small dependency
 
+@compile_workload begin
 
-import Tensorial 
-using Tensorial: ⊡₂
-using StaticArrays
+    include("../tests/full_problems/poisson_prec.jl")
+    include("../tests/full_problems/poisson_voronoi_second_order_prec.jl")
 
-function Tensorial.:⊡₂(a::StaticArray,b::StaticArray)
-    res = Tensorial.Tensor(a) ⊡₂ Tensorial.Tensor(b)
-
-    if res isa Tensorial.Tensor
-        return SArray{Tuple{size(res)...}}(res.data)
-    else
-        return res
-    end
 end
 
-export ⊡₂
+
 
 end # module Ju3VEM

@@ -119,3 +119,76 @@ using Ju3VEM.VEMUtils: _create_facedata_col
 
 end
 
+
+
+
+
+@testset "3d distorted hex" begin
+    # Unit cube
+    pts = [
+        SA[1.0, 0.6967508995457766, 0.2652762125195401],
+        SA[1.0, 0.6939582062214846, 0.4195014138252805],
+        SA[1.0, 0.834017549123514, 0.44996784728626127],
+        SA[1.0, 0.8483754497728884, 0.2225590945097912],
+        SA[0.846212538741397, 0.6658382034984748, 0.4345857747470885],
+        SA[0.8490456048024079, 0.6687122219350952, 0.3041992671447973],
+        SA[0.767094312782491, 0.8140415165449617, 0.28009811188056966],
+        SA[0.7851884716554579, 0.8014921741272065, 0.46566199190351215]
+    ]
+    
+    faces = [
+        [1,2,3,4] |> reverse,  # face 116
+        [1,2,5,6],  # face 129
+        [1,6,7,4],  # face 133
+        [3,8,5,2],  # face 152
+        [3,8,7,4] |> reverse,  # face 153
+        [5,8,7,6],  # face 154
+    ]
+
+    middle_point = mean(pts)
+
+    # Build topology and precompute face triangulations
+    topo2 = Topology{3}()
+    add_node!.(pts, Ref(topo2))
+    add_volume!(faces, topo2)
+    vol_id2 = 1
+    ft2 = FaceTriangulations3D(topo2)
+
+    # Constant: volume = 1
+    m0 = Monomial(1.0, SVector(0,0,0))
+    V0 = integrate_polynomial_over_volume(m0, vol_id2, topo2, ft2)
+    mesh = Mesh(topo2, StandardEl{1}())
+
+
+    fdc = _create_facedata_col(mesh)
+
+    # check face planarity 
+    for face in RootIterator{3}(topo2)
+        node_ids = get_area_node_ids(topo2, face.id)
+        face_nodes = get_nodes(topo2)[node_ids]
+        
+        nodes2d = project_to_2d_abs.(face_nodes,Ref(fdc[face.id].dΩ.plane))
+    end
+
+
+    for face in RootIterator{3}(topo2)
+        node_ids = get_area_node_ids(topo2, face.id)
+        face_middle_point = mean(get_nodes(topo2)[node_ids])
+        normal = fdc[face.id].dΩ.plane.n
+        
+        normal_sign = Ju3VEM.VEMGeo.check_normal_sign(normal, face_middle_point, middle_point)
+        @show normal_sign
+        # display(normal)
+    end
+
+    display(V0)
+
+
+    vol_data = precompute_volume_monomials(1, mesh.topo, fdc, Val(1), false)
+    
+    mi = Monomial(1.0, SVector(0,0,0))
+    V1 = compute_volume_integral_unshifted(mi, vol_data, 1.0)
+
+    display(V1)
+ 
+end
