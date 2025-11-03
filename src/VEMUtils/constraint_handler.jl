@@ -401,11 +401,11 @@ function add_neumann_bc!(
 			for base_fun in 1:U*(K+1)
 				ϕi = lagrange_shape_function(base_fun,ξ,Val(K),Val(U))
 				dof = dofs[base_fun]
-				ch.n_bcs[dof] = fval ⊡ ϕi * w + get(ch.n_bcs,dof,0.0)
+				ch.n_bcs[dof] = fval ⋅ ϕi * w + get(ch.n_bcs,dof,0.0)
 			end
 		end
 	end
 
 	# Store boundary condition function and DOFs for potential updates
-	ch.n_bcs_funs[set_name] = (fun, collect(1:U))
+	nothing
 end
