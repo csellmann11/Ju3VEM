@@ -69,8 +69,8 @@ module MaterialLaws
         return grad
     end
 
-    @inline function eval_hessian(h::Helmholtz{U,D},∇u::SMatrix{U,D,T},
-        pars::P = h.pars) where {U,D,P,T}
+    @inline function eval_hessian(h::Helmholtz{U,D,F,G,H,P},∇u::SMatrix{U,D,T},
+        pars::P = h.pars) where {U,D,P,T,F,G,H}
         hess = SArray{Tuple{U,D,U,D},T}(h.h(∇u,pars...))
         return hess
     end

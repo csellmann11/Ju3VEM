@@ -711,52 +711,52 @@ the `root_area`, `facedata` and `topo` as arguments
 - `volume_id::Int`: The id of the volume to iterate over.
 - `cond::Function`: The condition to check if the area should be applied.
 """
-function iterate_volume_areas(fun::F1, 
-facedata_col::Dict{Int,FD}, 
-topo::Topology{D}, volume_id::Int, 
-cond::F2=is_root) where {D,F1,F2,FD} 
-
-    area_ids = get_volume_area_ids(topo, volume_id)
-    areas = get_areas(topo)
-    for area_id in area_ids
-        area = areas[area_id]
-        apply_f_on_unordered(cond, area, areas) do root_area
-            fun(root_area, facedata_col[root_area.id], topo)
-        end
-    end 
-end
-
 # function iterate_volume_areas(fun::F1, 
-#     facedata_col::Dict{Int,FD},
-#     topo::Topology{D},
-#     volume_id::Int,
-#     cond::F2=is_root) where {D,F1,F2,FD}
-    
+# facedata_col::Dict{Int,FD}, 
+# topo::Topology{D}, volume_id::Int, 
+# cond::F2=is_root) where {D,F1,F2,FD} 
+
 #     area_ids = get_volume_area_ids(topo, volume_id)
 #     areas = get_areas(topo)
-#     @no_escape begin
-#         aq = CustStack(stack = @alloc(Int,1000))
+#     for area_id in area_ids
+#         area = areas[area_id]
+#         apply_f_on_unordered(cond, area, areas) do root_area
+#             fun(root_area, facedata_col[root_area.id], topo)
+#         end
+#     end 
+# end
+
+function iterate_volume_areas(fun::F1, 
+    facedata_col::Dict{Int,FD},
+    topo::Topology{D},
+    volume_id::Int,
+    cond::F2=is_root) where {D,F1,F2,FD}
+    
+    area_ids = get_volume_area_ids(topo, volume_id)
+    areas = get_areas(topo)
+    @no_escape begin
+        aq = CustStack(stack = @alloc(Int,1000))
         
-#         for area_id in area_ids
-#             push!(aq,area_id)
-#             while !isempty(aq)
-#                 root_area_id = pop_last!(aq)
-#                 root_area = areas[root_area_id]
+        for area_id in area_ids
+            push!(aq,area_id)
+            while !isempty(aq)
+                root_area_id = pop_last!(aq)
+                root_area = areas[root_area_id]
                 
-#                 if cond(root_area)
-#                     fun(root_area,facedata_col[root_area_id],topo)
-#                     continue
-#                 end
+                if cond(root_area)
+                    fun(root_area,facedata_col[root_area_id],topo)
+                    continue
+                end
 
 # TODO: Check if this must be ifelse 
 
-#                 for child_id in root_area.childs
-#                     push!(aq,child_id)
-#                 end
-#             end
-#         end
-#     end
-# end
+                for child_id in root_area.childs
+                    push!(aq,child_id)
+                end
+            end
+        end
+    end
+end
 
 
 """

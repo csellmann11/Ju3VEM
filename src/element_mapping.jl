@@ -1,9 +1,9 @@
 using StaticArrays
 using ..VEMGeo: FaceData
-
+using OrderedCollections: OrderedDict
 
 struct NodeID2LocalID 
-    map                  ::Dict{Int,Int16}
+    map                  ::OrderedDict{Int,Int16}
     counter              ::MVector{4,Int16} 
 end
 

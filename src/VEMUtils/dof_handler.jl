@@ -39,7 +39,8 @@ function get_dofs!(
     start = 1) where {D,U,N}
 
     n_dofs = length(nodes)*U + (start-1)
-    length(vec) != n_dofs && resize!(vec,n_dofs)
+    # length(vec) != n_dofs && resize!(vec,n_dofs)
+    @assert length(vec) == n_dofs "Vector length does not match number of DOFs, got $(length(vec)) but expected $n_dofs"
 
     counter = start
     @inbounds for node in nodes,i in 1:U
@@ -49,8 +50,8 @@ function get_dofs!(
     end
 end
 
-function get_dofs(dh::DofHandler{U},
-    nodes::AbstractVector) where U
+function get_dofs(dh::DofHandler{D,U},
+    nodes::AbstractVector) where {D,U}
 
     vec = Vector{Int}(undef,length(nodes)*U)
     get_dofs!(vec,dh,nodes)

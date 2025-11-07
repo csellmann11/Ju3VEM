@@ -172,6 +172,8 @@ function build_local_kel_and_f!(
     ℂ0 = eval_hessian(mat_law,zero(SMatrix{U,D,Float64,U*D}),pars)
     ∇x_base = SVector{length(base3d)}(∇(m,hvol)(zero(bc)) for m in base3d)
 
+
+
     for (i,∇mx) in enumerate(∇x_base)
         ∇mxℂ0 = ℂ0 ⊡₂ ∇mx
         for (j,∇nx) in enumerate(∇x_base)

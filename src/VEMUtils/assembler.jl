@@ -32,17 +32,21 @@ function get_n_entries(cv::CellValues{3,U},::Int) where U
  
     nvol_nodes = Ref(0)
 
+    node_set = Set{Int}()
     for element in RootIterator{4}(cv.mesh.topo) 
 
-        nvol_nodes[] = 0
+        # nvol_nodes[] = 0
+        empty!(node_set)
         iterate_volume_areas(cv.facedata_col,cv.mesh.topo,element.id) do _, face_data, _
             n_face_nodes = length(face_data.face_node_ids)
-            nvol_nodes[] += (n_face_nodes)
+            union!(node_set, face_data.face_node_ids)
         end
-        n_entries += (div(nvol_nodes[],2)*U)^2
+
+        n_moments = length(cv.mesh.int_coords_connect[4][element.id])
+        n_entries += (length(node_set) + n_moments)^2 * U^2
         
     end
-    n_entries[]
+    n_entries
 end
 
 function Assembler{T}(cv::CellValues{D,U,ET},count = 1)  where {T<:Real,D,U,K,ET<:ElType{K}}
@@ -73,31 +77,47 @@ function local_assembly!(as::Assembler{T,D,U}, klocal::AbstractMatrix{T},
     
     @assert size(klocal,1) == size(flocal,1) == size(klocal,2) "Matrix and vector dimension mismatch"
 
-    dh = as.cv.dh
+    node_ids = as.cv.vnm.map.keys
+    @no_escape begin
+        dofs = @alloc(Int, length(node_ids)*U)
+        get_dofs!(dofs, as.cv.dh, node_ids)
 
-    for (node_id_i,i) in as.cv.vnm.map
-        dofs_i = get_dofs(dh, node_id_i) 
-        local_dofs_i = local_ids_to_local_dofs(i, dh)
-        as.rhs[dofs_i] += flocal[local_dofs_i]
-         
-        for (node_id_j,j) in as.cv.vnm.map
-            dofs_j = get_dofs(dh, node_id_j)
-            local_dofs_j = local_ids_to_local_dofs(j, dh)
-            
-            for u in 1:U, v in 1:U
-                as.rows[as.count] = dofs_i[u]
-                as.cols[as.count] = dofs_j[v]
-                as.vals[as.count] = klocal[local_dofs_i[u], local_dofs_j[v]]
+        @inbounds for (i,dof_i) in enumerate(dofs)
+            as.rhs[dof_i] += flocal[i]
+            for (j,dof_j) in enumerate(dofs)
+                as.rows[as.count] = dof_i
+                as.cols[as.count] = dof_j
+                as.vals[as.count] = klocal[i,j]
                 as.count += 1
             end
         end
     end
+
+    # dh = as.cv.dh
+
+    # for (node_id_i,i) in as.cv.vnm.map
+    #     dofs_i = get_dofs(dh, node_id_i) 
+    #     local_dofs_i = local_ids_to_local_dofs(i, dh)
+    #     as.rhs[dofs_i] += flocal[local_dofs_i]
+         
+    #     for (node_id_j,j) in as.cv.vnm.map
+    #         dofs_j = get_dofs(dh, node_id_j)
+    #         local_dofs_j = local_ids_to_local_dofs(j, dh)
+            
+    #         for u in 1:U, v in 1:U
+    #             as.rows[as.count] = dofs_i[u]
+    #             as.cols[as.count] = dofs_j[v]
+    #             as.vals[as.count] = klocal[local_dofs_i[u], local_dofs_j[v]]
+    #             as.count += 1
+    #         end
+    #     end
+    # end
 end
 
 function assemble!(as::Assembler)
     n_entries = as.count - 1
-    return @views sparse(as.rows[1:n_entries], 
-                        as.cols[1:n_entries], 
-                        as.vals[1:n_entries], 
+    return @views sparse(as.rows, 
+                        as.cols, 
+                        as.vals, 
                         as.ndofs, as.ndofs), as.rhs
 end

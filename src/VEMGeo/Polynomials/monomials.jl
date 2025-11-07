@@ -76,47 +76,94 @@ end
 
 import Base: heads,tail
 
+# function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {T,D,S,N}
+#     idx = heads(idxs)[1]
+#     @boundscheck @assert idx <= D "index out of bounds"
+#     exp_val = exp[idx]
+#     new_exp_val = exp_val-1
+#     new_exp = if new_exp_val < 0
+#         zero(SVector{D,Int})
+#     else
+#         setindex(exp, new_exp_val, idx)
+#     end
+    
+#     idxs_tail = tail(idxs)
+#     if N > 1  
+#         return derivative(new_exp,val/h*exp_val,h,idxs_tail...)
+#     else
+#         return val/h*exp_val, new_exp
+#     end
+# end
+# """
+#     derivative(m1::Monomial{T,D}, 
+#         h::T, idxs::Vararg{Int,N}) where {T,D,N} -> Monomial
+
+# Compute the derivative of a monomial with respect to a given index.
+# The monomials can be scaled as `((x-x0)/h)^n`, so 
+# the value h needs to be passed to compute the derivative.
+
+# # Arguments
+# - `m1::Monomial{T,D}`: Monomial to compute the derivative.
+# - `h::T`: Value of h.
+# - `idxs::Vararg{Int,N}`: Indexes to compute the derivative.
+
+# # Example 
+# ```julia
+# m1 = Monomial(2.0, SVector(1,0))  # 2x
+
+# h = 0.5 
+# ∂(m1, h, 1)  # 2/h
+# """
+# function derivative(m1::Monomial{T,D}, h::S, idxs::Vararg{Int,N}) where {T,D,S,N}
+#     val,exp =  derivative(m1.exp, m1.val, h, idxs...)
+#     Monomial(val,exp)
+# end
+
 function derivative(exp::SVector{D,Int},val::T,h::S,idxs::Vararg{Int,N}) where {T,D,S,N}
-    idx = heads(idxs)[1]
-    @boundscheck @assert idx <= D "index out of bounds"
-    exp_val = exp[idx]
-    new_exp_val = exp_val-1
-    new_exp = if new_exp_val < 0
-        zero(SVector{D,Int})
-    else
-        setindex(exp, new_exp_val, idx)
+    current_exp = exp
+    current_val = val
+    
+    for idx in idxs
+        # @boundscheck @assert idx <= D "index out of bounds"
+        exp_val = current_exp[idx]
+        new_exp_val = exp_val - 1
+        
+        # Update the coefficient value
+        current_val = current_val / h * exp_val
+        
+        # Update the exponent vector
+        if new_exp_val < 0
+            # current_exp = zero(SVector{D,Int})
+            current_exp = SVector{D}(zero(Int) for _ in 1:D)
+            # Early exit: once we have zero exponent, further derivatives remain zero
+            break
+        else
+            current_exp = setindex(current_exp, new_exp_val, idx)
+        end
     end
     
-    idxs_tail = tail(idxs)
-    if N > 1  
-        return derivative(new_exp,val/h*exp_val,h,idxs_tail...)
-    else
-        return val/h*exp_val, new_exp
-    end
+    return current_val, current_exp
 end
+
 """
     derivative(m1::Monomial{T,D}, 
         h::T, idxs::Vararg{Int,N}) where {T,D,N} -> Monomial
-
 Compute the derivative of a monomial with respect to a given index.
 The monomials can be scaled as `((x-x0)/h)^n`, so 
 the value h needs to be passed to compute the derivative.
-
 # Arguments
 - `m1::Monomial{T,D}`: Monomial to compute the derivative.
 - `h::T`: Value of h.
 - `idxs::Vararg{Int,N}`: Indexes to compute the derivative.
-
 # Example 
 ```julia
 m1 = Monomial(2.0, SVector(1,0))  # 2x
-
 h = 0.5 
 ∂(m1, h, 1)  # 2/h
 """
 function derivative(m1::Monomial{T,D}, h::S, idxs::Vararg{Int,N}) where {T,D,S,N}
-    val,exp =  derivative(m1.exp, m1.val, h, idxs...)
-    Monomial(val,exp)
+    val, exp = derivative(m1.exp, m1.val, h, idxs...)
+    Monomial(val, exp)
 end
 
 function ∇(m1::Monomial{T,D},h::S = 1.0) where {T,D,S} 
@@ -124,9 +171,7 @@ function ∇(m1::Monomial{T,D},h::S = 1.0) where {T,D,S}
     return grad
 end
 
-function ∇(sm1::AbstractVector{Monomial{T,D}},h::S = 1.0) where {T,D,S} 
-    U = length(typeof(sm1)) #does only work for statically sized vectors
-    # grad = Mat{U,D}((i,j)->derivative(sm1[i],h,j))
+function ∇(sm1::StaticVector{U,Monomial{T,D}},h::S = 1.0) where {T,D,S,U} 
     grad = SMatrix{U,D}(derivative(sm1[i],h,j) for i in 1:U, j in 1:D)
     return grad
 end
