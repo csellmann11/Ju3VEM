@@ -208,7 +208,7 @@ function create_voronoi_mesh(left::Tuple{Float64, Float64},
 	T = right[2] - left[2]
 
 
-	num_points = nx * ny
+	num_points = (nx + 1) * (ny + 1)
 
 
 	points = Tuple{Float64, Float64}[]

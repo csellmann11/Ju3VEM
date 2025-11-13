@@ -118,43 +118,43 @@ end
 
 #Info: access volume information
 @inline get_volume_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[1, 4]
-@inline get_volume_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_node_ids(topo)[id]
+@inline get_volume_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_node_ids(topo)[id]
 @inline get_volume_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[2, 4]
-@inline get_volume_edge_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_edge_ids(topo)[id]
+@inline get_volume_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_edge_ids(topo)[id]
 @inline get_volume_area_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[3, 4]
-@inline get_volume_area_ids(topo, id::Int)::ID_VEC_TYPE{Int}     = get_volume_area_ids(topo)[id]
+@inline get_volume_area_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_area_ids(topo)[id]
 #Info: access face information
 @inline get_area_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 3]
-@inline get_area_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_area_node_ids(topo)[id]
+@inline get_area_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_area_node_ids(topo)[id]
 @inline get_area_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[2, 3]
-@inline get_area_edge_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_area_edge_ids(topo)[id]
+@inline get_area_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_area_edge_ids(topo)[id]
 #Info: access edge information
 @inline get_edge_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 2]
-@inline get_edge_node_ids(topo, id::Int)::ID_VEC_TYPE{Int}       = get_edge_node_ids(topo)[id]
+@inline get_edge_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_edge_node_ids(topo)[id]
 
 
-@inline add_volume_node_id!(topo, dest::Int, val::Int) =
+@inline add_volume_node_id!(topo, dest::Integer, val::Integer) =
     push!(get_volume_node_ids(topo, dest), val)
-@inline add_volume_edge_id!(topo, dest::Int, val::Int) =
+@inline add_volume_edge_id!(topo, dest::Integer, val::Integer) =
     push!(get_volume_edge_ids(topo, dest), val)
-@inline add_volume_area_id!(topo, dest::Int, val::Int) =
+@inline add_volume_area_id!(topo, dest::Integer, val::Integer) =
     push!(get_volume_area_ids(topo, dest), val)
 
-@inline add_area_node_id!(topo, dest::Int, val::Int) =
+@inline add_area_node_id!(topo, dest::Integer, val::Integer) =
     push!(get_area_node_ids(topo, dest), val)
-@inline add_area_node_id!(topo,loc::Int,dest::Int,val::Int) = 
+@inline add_area_node_id!(topo,loc::Integer,dest::Integer,val::Integer) = 
     get_area_node_ids(topo,dest)[loc] = val
 
 
-@inline add_area_edge_id!(topo, dest::Int, val::Int) =
+@inline add_area_edge_id!(topo, dest::Integer, val::Integer) =
     push!(get_area_edge_ids(topo, dest), val)
-@inline add_area_edge_id!(topo,loc::Int,dest::Int,val::Int) = 
+@inline add_area_edge_id!(topo,loc::Integer,dest::Integer,val::Integer) = 
     get_area_edge_ids(topo,dest)[loc] = val
 
 
-@inline add_edge_node_id!(topo, dest::Int, val::Int) =
+@inline add_edge_node_id!(topo, dest::Integer, val::Integer) =
     push!(get_edge_node_ids(topo, dest), val)
-@inline add_edge_node_id!(topo,loc::Int,dest::Int,val::Int) = 
+@inline add_edge_node_id!(topo,loc::Integer,dest::Integer,val::Integer) = 
     get_edge_node_ids(topo,dest)[loc] = val
 
 
@@ -757,6 +757,39 @@ function iterate_volume_areas(fun::F1,
         end
     end
 end
+
+
+function iterate_volume_areas(fun::F1, 
+    topo::Topology{D},
+    volume_id::Int,
+    cond::F2=is_root) where {D,F1,F2}
+    
+    area_ids = get_volume_area_ids(topo, volume_id)
+    areas = get_areas(topo)
+    @no_escape begin
+        aq = CustStack(stack = @alloc(Int,1000))
+        
+        for area_id in area_ids
+            push!(aq,area_id)
+            while !isempty(aq)
+                root_area_id = pop_last!(aq)
+                root_area = areas[root_area_id]
+                
+                if cond(root_area)
+                    fun(root_area)
+                    continue
+                end
+
+                for child_id in root_area.childs
+                    push!(aq,child_id)
+                end
+            end
+        end
+    end
+end
+
+
+
 
 
 """
