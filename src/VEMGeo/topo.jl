@@ -776,7 +776,7 @@ function iterate_volume_areas(fun::F1,
                 root_area = areas[root_area_id]
                 
                 if cond(root_area)
-                    fun(root_area)
+                    fun(root_area,area_id)
                     continue
                 end
 

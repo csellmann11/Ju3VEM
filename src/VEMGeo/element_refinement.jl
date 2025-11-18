@@ -218,20 +218,6 @@ function _refine!(volume::Volume{D},topo::Topology{D};
             f2c = face_to_center[adj_faces[2]]
             boundary_quad_ids[boundary_quad_counter] = add_area!(SA[mid, f1c, new_node_id, f2c], topo, 0, volume.refinement_level)
             
-            # if non_planar
-            #     last_area_id = boundary_quad_ids[boundary_quad_counter]
-            #     last_area_added = get_areas(topo)[last_area_id]
- 
-            #     # triangulate the face if its non-planar
-            #     tria1_id = add_area!(SA[mid, f1c, new_node_id], topo, last_area_id, volume.refinement_level)
-            #     tria2_id = add_area!(SA[new_node_id, f2c, mid], topo, last_area_id, volume.refinement_level)
-            #     append!(last_area_added.childs, [tria1_id, tria2_id])
-            #     last_area_added.is_root = false
-
-            #     boundary_quad_ids[boundary_quad_counter] = tria1_id
-            #     boundary_quad_counter += 1
-            #     boundary_quad_ids[boundary_quad_counter] = tria2_id
-            # end
             boundary_quad_counter += 1
         end
 

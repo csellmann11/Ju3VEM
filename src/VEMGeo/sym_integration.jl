@@ -401,21 +401,6 @@ function precompute_volume_monomials(vol_id::Int,
     # the areea and th ebary cneter are computed without the offset 
     # therefore they are in an extra loop
 
-    # #TODO: swith loop order for performance
-    # for i in 1:min(4,L)
-    #     mi = base[i] 
-    #     p = mi.exp[1]
- 
-    #     m_face = Monomial(1/(p+1),SA[p+1,mi.exp[2],mi.exp[3]])
-
-    #     iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
-    #         dΩ = facedata.dΩ 
-    #         normal = get_outward_normal(_some_point_inside,facedata)
-    #         geo_data[i] += compute_face_integral(m_face*normal[1],dΩ,SA[0.0,0.0,0.0],1.0)
-    #     end
-    # end
-
-
     iterate_volume_areas(facedata_col,topo,vol_id) do _, facedata, _
         dΩ = facedata.dΩ 
         normal = get_outward_normal(_some_point_inside,facedata)

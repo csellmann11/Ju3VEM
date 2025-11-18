@@ -333,7 +333,7 @@ end
 
 
 
-function project_to_plane(points::AbstractVector{<:SVector{3,T}}) where T
+function project_to_plane(points::AbstractVector{<:StaticVector{3,T}}) where T
     points2 = Vector{SVector{2,T}}(undef, length(points))
     u,v,n = project_to_plane!(points2, points)
     return u,v,n,points2
