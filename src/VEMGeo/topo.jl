@@ -187,7 +187,8 @@ end
 @inline edge_hash(n1::Int, n2::Int) = ID_VEC_TYPE(SVector(minmax(n1, n2)))
 @inline edge_hash(v::Union{SVector{2,Int},Tuple{Int,Int}}) = edge_hash(v...)
 @inline area_hash(v) = rotate_to_min(v)
-@inline volume_hash(v) = sort!(ID_VEC_TYPE(v))
+# @inline volume_hash(v) = sort!(ID_VEC_TYPE(v))
+@inline volume_hash(v) = rotate_to_min(v)
 
 function add_edge!(node_ids::AbstractVector,
     topo::Topology{D},
@@ -197,11 +198,22 @@ function add_edge!(node_ids::AbstractVector,
     @assert length(node_ids) == 2
 
     temp_id = length(topo.edges) + 1
-    edge = get!(topo.edges, edge_hash(node_ids),
-        Edge{D}(temp_id, parent_ref_level + 1, parent_id))
+    # edge = get!(topo.edges, edge_hash(node_ids),
+    #     Edge{D}(temp_id, parent_ref_level + 1, parent_id))
 
-    activate!(edge)
-    return edge.id
+    generated_hash = edge_hash(node_ids)
+    idx = OrderedCollections.ht_keyindex2(topo.edges, generated_hash)
+    id = if idx <= 0
+        topo.edges[generated_hash] = Edge{D}(temp_id, parent_ref_level + 1, parent_id)
+        temp_id
+    else 
+        edge = topo.edges.vals[idx]
+        activate!(edge)
+        edge.id
+        
+    end
+    
+    return id
 end
 
 function activate!(area::Area{D}, topo::Topology{D})::Nothing where D
@@ -257,8 +269,8 @@ function add_area!(_node_ids::AbstractVector{Int},
         ip1 = get_next_idx(node_ids, i)
         edge_id = add_edge!(SA[node_id, node_ids[ip1]],
             topo, 0, parent_ref_level)
- 
-        add_area_edge_id!(topo,i,id,edge_id)
+
+        area_edge_ids[i] = edge_id
     end
     return id
 end
@@ -291,8 +303,14 @@ function add_volume!(face_ids::AbstractVector{Int},
 
     
     if id == temp_id
-        unique_ids = get_unique_values(get_area_node_ids(topo),face_ids)
-        push!(get_volume_node_ids(topo), unique_ids)
+        # unique_ids = get_unique_values(get_area_node_ids(topo),face_ids)
+        area_node_ids_full = get_area_node_ids(topo) 
+
+        id_set = Set(Iterators.flatten(area_node_ids_full[face_ids]))
+        ids = FixedSizeVector{Int}(undef, length(id_set))
+        copyto!(ids, id_set)
+
+        push!(get_volume_node_ids(topo), ids)
     end
     volume.id
 
@@ -337,8 +355,9 @@ end
 @inline is_active_root(mf::NManifold) = is_root(mf) && is_active(mf)
 
 #TODO: check performance implications of union return type
-@inline function get_edge(n1::Int, n2::Int, topo::Topology{D}) where D
+@inline function get_edge(n1::Int, n2::Int, topo::Topology{D})::Edge{D} where D
     edge = get(topo.edges, edge_hash(SVector(n1, n2)), nothing)
+    @assert edge !== nothing "Edge not found"
     return edge
 end
 

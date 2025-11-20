@@ -199,7 +199,7 @@ function add_internal_coords!(mesh::Mesh{D,ET},
 
     volume_moment_offset = face_moment_offset + length(face_moment_coords)
     for vol in RootIterator{D,4}(topo)
-        node_ids = get_volume_node_ids(topo, vol.id)
+        # node_ids = get_volume_node_ids(topo, vol.id) 
         num_moments_local = getnvolmoments(vol.id, ET(), topo)
         volume_moment_ids = FixedSizeVector{Int}(undef, num_moments_local)
 

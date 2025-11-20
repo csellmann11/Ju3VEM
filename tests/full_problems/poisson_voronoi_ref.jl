@@ -35,12 +35,12 @@ mesh2d = create_voronoi_mesh((0.0,0.0),(1.0,1.0),n,n,StandardEl{K},true)
 mesh   = extrude_to_3d(n,mesh2d,1.0);
 
 
-left  = (0.0, 0.0, 0.0)
-right = (1.0, 1.0, 1.0)
-rng   = Random.MersenneTwister(1)
-seeds = [SA[rand(rng), rand(rng), rand(rng)] for _ in 1:64]
-seeds = relax_voronoi3d_seeds(left, right, seeds; maxiters=15, move_tol=1e-7, step=0.8)
-mesh = create_voronoi_mesh_3d(left, right, seeds, StandardEl{K}; dedup_tol=1e-10)
+# left  = (0.0, 0.0, 0.0)
+# right = (1.0, 1.0, 1.0)
+# rng   = Random.MersenneTwister(1)
+# seeds = [SA[rand(rng), rand(rng), rand(rng)] for _ in 1:64]
+# seeds = relax_voronoi3d_seeds(left, right, seeds; maxiters=15, move_tol=1e-7, step=0.8)
+# mesh = create_voronoi_mesh_3d(left, right, seeds, StandardEl{K}; dedup_tol=1e-10)
 
 
 

@@ -3,7 +3,7 @@ using OrderedCollections, Bumper
 using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
 using Ju3VEM
-
+using Ju3VEM.VEMGeo: _refine!,_coarsen!
 # Build a square pyramid: base in z=0 plane, apex above center
 topo = Topology{3}()
 

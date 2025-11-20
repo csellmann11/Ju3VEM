@@ -3,8 +3,9 @@ using OrderedCollections, Bumper
 using LinearAlgebra, Statistics
 using SmallCollections, Chairmarks
 using LoopVectorization
+using Random
 using Ju3VEM
-
+using Ju3VEM.VEMGeo: _refine!,_coarsen!,refine!
 # =============================================================================
 # 3D Topology Test - Experimental Code
 # =============================================================================
@@ -61,20 +62,45 @@ end
 println("Area node IDs for volume 1: ", get_area_node_ids(topo)[get_volume_area_ids(topo, 1)])
 println("Volume node IDs for volume 2: ", get_volume_node_ids(topo, 2))
 
+
+# Ju3VEM.VEMGeo.get_volume_node_ids(topo, 1)
 # =============================================================================
 # Refine first volume and export
 # =============================================================================
+using JET
 let topo = deepcopy(topo)
     GC.gc(true)
+    rng = Random.MersenneTwister(123)
     @time for vol in RootIterator{3,4}(topo)
-        if rand(0:1) |> Bool
+        if rand(rng,0:1) |> Bool
             _refine!(vol,topo)
         end
     end
+
+
+    # @time for vol in RootIterator{3,4}(topo)
+    #     if rand(rng,0:1) |> Bool
+    #         _refine!(vol,topo)
+    #     end
+    # end
+    # # test of refinement warpper 
+    elements_to_refine = BitVector(rand(rng,0:1) |> Bool for _ in get_volumes(topo))
+    els_to_ref = sum(elements_to_refine)
+    println("Elements to refine: $els_to_ref")
+    # @time refine!(topo, elements_to_refine)
+    # t = @report_opt refine!(topo, elements_to_refine)
+    # show(t)
+
+    @show length(RootIterator{4}(topo))
+    # write_vtk(topo, "vtk/3d_test1")
 end
 
 
 
+
+# rng = Random.MersenneTwister(123)
+# elements_to_refine = BitVector(rand(rng,0:1) |> Bool for _ in get_volumes(topo))
+# @code_warntype create_refined_topology_holistic(topo, elements_to_refine)
 
 
 # @code_warntype _refine!(get_volumes(topo)[1],topo)
@@ -88,5 +114,5 @@ end
 
 # _coarsen!(get_volumes(topo)[3],topo)
 
-write_vtk(topo, "vtk/3d_test1")
+# write_vtk(topo, "vtk/3d_test1")
 

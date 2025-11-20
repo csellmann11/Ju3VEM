@@ -11,7 +11,7 @@ using Ju3VEM.VEMUtils: write_vtk
 using Ju3VEM.VEMUtils: add_face_set!
 using Ju3VEM.MaterialLaws: E_ν_to_lame, lame_to_E_ν, Ψlin
 
-include("../topo_tests/ana_error_compute.jl")
+# include("../topo_tests/ana_error_compute.jl")
 # using Ju3VEM.VEMUtils: create_volume_vem_projectors, reinit!,get_n_cell_dofs
 # using Ju3VEM.VEMUtils: add_node_set!,add_dirichlet_bc!,apply!
 # using Ju3VEM.VEMUtils: Mesh, StandardEl, create_volume_bmat, h1_projectors!, create_node_mapping
@@ -104,7 +104,7 @@ function assembly(cv::CellValues{D,U},f::F) where {D,U,F<:Function}
 
     E = 1e03; ν = 0.3
     λ,μ = E_ν_to_lame(E,ν)
-    mat_law = Helmholtz(Ψlin,D,U,λ,μ)
+    mat_law = Helmholtz{U,D}(Ψlin,(λ,μ))
     ∇u_dummy = one(SMatrix{U,D,Float64,U*D})
     γ = ∇u_dummy ⊡₂ eval_hessian(mat_law,∇u_dummy)⊡₂ ∇u_dummy
 
