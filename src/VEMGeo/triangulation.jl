@@ -79,17 +79,16 @@ function triangulate_polygon(nodes::AbstractVector{V};
 
     # Need at least 3 vertices for a triangle
     if n < 3
-        return Vector{Tuple{Int,Int,Int}}()
+        return Vector{Tuple{Integer,Integer,Integer}}()
     elseif n == 3
         return [(1, 2, 3)]
     end
 
 
     # Create a list of vertex indices
-    vertex_indices = collect(1:n)
-    # triangles = Vector{Tuple{Int,Int,Int}}()
+    vertex_indices = collect(Int32,1:n)
     n_triangles = length(nodes) - 2
-    triangles = FixedSizeArray{NTuple{3,Int}}(undef, n_triangles)
+    triangles = FixedSizeArray{NTuple{3,Integer}}(undef, n_triangles)
     tria_counter = 1
 
     # Remove collinear vertices first (optional optimization)
@@ -163,8 +162,8 @@ Check if a triangle forms a valid ear that can be clipped.
 """
 function is_valid_ear(v_prev::V, v_curr::V, v_next::V,
     nodes::AbstractVector{<:AbstractVector{<:Real}},
-    vertex_indices::Vector{Int},
-    prev_i::Int, curr_i::Int, next_i::Int) where {V<:AbstractVector{<:Real}}
+    vertex_indices::Vector{<:Integer},
+    prev_i::Integer, curr_i::Integer, next_i::Integer) where {V<:AbstractVector{<:Real}}
 
     D = 2 # assumes statically sized vector
     @assert D == length(V)
@@ -412,30 +411,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
         end
     end
     @assert i2 != -1 "Points appear to be collinear"
-    # pick i3 not collinear
-    # i3 = -1
-    # for i in 3:N
-    #     if i != i1 && i != i2
-    #         n = cross(points[i2] - points[i1], points[i] - points[i1])
-    #         if norm(n) > tol
-    #             i3 = i
-    #             break
-    #         end
-    #     end
-    # end
-    # @assert i3 != -1 "Points appear to be collinear"
-    # i3 = i3::Int
-    # # pick i4 not coplanar
-    # i4 = -1
-    # for i in 4:N
-    #     if i != i1 && i != i2 && i != i3
-    #         vol = signed_tet_volume(points[i1], points[i2], points[i3], points[i])
-    #         if abs(vol) > tol
-    #             i4 = i
-    #             break
-    #         end
-    #     end
-    # end
+
     # pick i3 not collinear
     i3 = -1
     for i in 3:N
@@ -490,7 +466,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     end
 
     # Boundary faces: vector of oriented triples, outward normals oriented away from interior_ref
-    function orient_face_outward(tri::NTuple{3,Int}, interior_ref::SVector{3,T})
+    function orient_face_outward(tri::NTuple{3,<:Integer}, interior_ref::SVector{3,T})
         i,j,k = tri
         n = cross(points[j] - points[i], points[k] - points[i])
         if dot(n, interior_ref - points[i]) > 0
@@ -504,7 +480,7 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     #TODO: Replace this in the future with the barycenter
     interior_ref = (points[a] + points[b] + points[c] + points[d]) / T(4)
    
-    boundary = FixedSizeArray{NTuple{3,Int}}(undef, 4)
+    boundary = FixedSizeArray{NTuple{3,Int32}}(undef, 4)
     boundary[1] = orient_face_outward((a,b,c), interior_ref)
     boundary[2] = orient_face_outward((a,d,b), interior_ref)
     boundary[3] = orient_face_outward((b,d,c), interior_ref)
@@ -514,14 +490,14 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
     #! This bound might be to small
     max_tet_number = 5*length(points) #- 2
     tet_counter = 1
-    tets = FixedSizeArray{NTuple{4,Int}}(undef, max_tet_number)
+    tets = FixedSizeArray{NTuple{4,Int32}}(undef, max_tet_number)
 
-    new_boundary = NTuple{3,Int}[]
-    horizon_oriented = Tuple{Int,Int}[]
+    new_boundary = NTuple{3,Int32}[]
+    horizon_oriented = Tuple{Int32,Int32}[]
     tets[1] = (a,b,c,d)
     tet_counter += 1
 
-    edge_map = Dict{Tuple{Int,Int}, Tuple{Int,Tuple{Int,Int}}}()
+    edge_map = Dict{Tuple{Int32,Int32}, Tuple{Int32,Tuple{Int32,Int32}}}()
     for p in 1:N 
         p in used && continue
         # Determine visible faces of boundary from p
@@ -554,7 +530,6 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
         end
         # Collect horizon edges = edges on boundary between visible and non-visible regions
         # Map unordered edge => (count_visible, one_oriented_edge)
-        # edge_map = Dict{Tuple{Int,Int}, Tuple{Int,Tuple{Int,Int}}}()
         empty!(edge_map)
         for (idx, (i,j,k)) in enumerate(boundary)
             if visible[idx]
@@ -595,11 +570,11 @@ function tetrahedralize_points_convex(points::AbstractVector{<:StaticVector{3,T}
 end
 
 """
-    tetrahedralize_volume_local_ids(topo::Topology{3}, volume_id::Int)
+    tetrahedralize_volume_local_ids(topo::Topology{3}, volume_id::Integer)
 
 Return tetrahedra as local indices for the given `volume_id` in `topo`.
 """
-function tetrahedralize_volume_local_ids(topo::Topology{3}, volume_id::Int)
+function tetrahedralize_volume_local_ids(topo::Topology{3}, volume_id::Integer)
     global_node_ids = get_volume_node_ids(topo, volume_id)
     # pts = @views get_coords.(get_nodes(topo)[global_node_ids])
     pts = @view get_nodes(topo)[global_node_ids]
@@ -608,11 +583,11 @@ function tetrahedralize_volume_local_ids(topo::Topology{3}, volume_id::Int)
 end
 
 """
-    tetrahedralize_volume(topo::Topology{3}, volume_id::Int)
+    tetrahedralize_volume(topo::Topology{3}, volume_id::Integer)
 
 Return `(tets_local, local_to_global)` for the given volume.
 """
-function tetrahedralize_volume(topo::Topology{3}, volume_id::Int)
+function tetrahedralize_volume(topo::Topology{3}, volume_id::Integer)
     global_node_ids = get_volume_node_ids(topo, volume_id)
     # pts = @views get_coords.(get_nodes(topo)[global_node_ids])
     pts = @view get_nodes(topo)[global_node_ids]
@@ -621,12 +596,12 @@ function tetrahedralize_volume(topo::Topology{3}, volume_id::Int)
 end
 
 """
-    build_tet_topology_from_volume(topo::Topology{3}, volume_id::Int; tets_local)
+    build_tet_topology_from_volume(topo::Topology{3}, volume_id::Integer; tets_local)
 
 Build a new `Topology{3}` containing tetrahedra for visualization. Reuses the
 coordinates of the original `topo` and maps local indices to global ones.
 """
-function build_tet_topology_from_volume(topo::Topology{3}, volume_id::Int; tets_local)
+function build_tet_topology_from_volume(topo::Topology{3}, volume_id::Integer; tets_local)
     tet_topo = Topology{3}()
     local_to_global = get_volume_node_ids(topo, volume_id)
     # Add nodes in local order
@@ -634,14 +609,14 @@ function build_tet_topology_from_volume(topo::Topology{3}, volume_id::Int; tets_
         add_node!(get_coords(get_nodes(topo)[gid]), tet_topo)
     end
     # Helper to add a tetrahedron as a polyhedron with 4 triangular faces
-    function add_tet!(a::Int,b::Int,c::Int,d::Int)
+    function add_tet!(a::Integer,b::Integer,c::Integer,d::Integer)
         faces = (
             SVector(a,b,c),
             SVector(a,d,b),
             SVector(b,d,c),
             SVector(c,d,a),
         )
-        face_ids = Int[]
+        face_ids = Int32[]
         for f in faces
             push!(face_ids, add_area!(f, tet_topo))
         end
@@ -654,11 +629,11 @@ function build_tet_topology_from_volume(topo::Topology{3}, volume_id::Int; tets_
 end
 
 """
-    triangulate_area_local_ids(topo::Topology{3}, area_id::Int; find_optimal_ear=true)
+    triangulate_area_local_ids(topo::Topology{3}, area_id::Integer; find_optimal_ear=true)
 
 Return triangles as local indices into the area's node list.
 """
-function triangulate_area_local_ids(topo::Topology{3}, area_id::Int; find_optimal_ear::Bool=true)
+function triangulate_area_local_ids(topo::Topology{3}, area_id::Integer; find_optimal_ear::Bool=true)
     gids = get_area_node_ids(topo, area_id)
     pts = get_nodes(topo)[gids]
     tris_local = triangulate_planar_polygon3D(pts; find_optimal_ear)
@@ -666,11 +641,11 @@ function triangulate_area_local_ids(topo::Topology{3}, area_id::Int; find_optima
 end
 
 """
-    triangulate_area(topo::Topology{3}, area_id::Int; find_optimal_ear=true)
+    triangulate_area(topo::Topology{3}, area_id::Integer; find_optimal_ear=true)
 
 Return triangles as global node id tuples for the given area.
 """
-function triangulate_area(topo::Topology{3}, area_id::Int; find_optimal_ear::Bool=true)
+function triangulate_area(topo::Topology{3}, area_id::Integer; find_optimal_ear::Bool=true)
     gids = get_area_node_ids(topo, area_id)
     tris_local = triangulate_area_local_ids(topo, area_id; find_optimal_ear)
     return map(t -> (gids[t[1]], gids[t[2]], gids[t[3]]), tris_local)
@@ -695,7 +670,7 @@ function polygon_area3D(points::AbstractVector{<:StaticVector{3,T}}) where T
 end
 
 """
-    volume_from_faces(points::AbstractVector{<:SVector{3,T}}, faces::Vector{<:AbstractVector{Int}}) where T
+    volume_from_faces(points::AbstractVector{<:SVector{3,T}}, faces::Vector{<:AbstractVector{<:Integer}}) where T
 
 Compute volume of a closed polyhedron given vertex coordinates and faces (each a
 polygon as a list of vertex indices, outward orientation unknown). Triangulates
@@ -703,7 +678,7 @@ each face robustly in its own plane (handles concave faces) and sums oriented
 tetra volumes via the divergence theorem; triangle orientations are flipped to
 be outward using the polyhedron centroid as reference.
 """
-function volume_from_faces(points::AbstractVector{<:StaticVector{3,T}}, faces::Vector{<:AbstractVector{Int}}) where T
+function volume_from_faces(points::AbstractVector{<:StaticVector{3,T}}, faces::Vector{<:AbstractVector{<:Integer}}) where T
     c = reduce(+, points) / T(length(points))
     V = zero(T)
     for f in faces
@@ -733,11 +708,11 @@ function volume_from_faces(points::AbstractVector{<:StaticVector{3,T}}, faces::V
 end
 
 """
-    volume_of_topo_volume(topo::Topology{3}, volume_id::Int)
+    volume_of_topo_volume(topo::Topology{3}, volume_id::Integer)
 
 Compute volume of a `Topology` volume using its faces.
 """
-function volume_of_topo_volume(topo::Topology{3}, volume_id::Int)
+function volume_of_topo_volume(topo::Topology{3}, volume_id::Integer)
     node_ids = get_volume_node_ids(topo, volume_id)
     pts = get_nodes(topo)[node_ids]
     face_ids = get_volume_area_ids(topo, volume_id)

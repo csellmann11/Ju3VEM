@@ -17,12 +17,12 @@ struct SerendipityEl{K} <: ElType{K} end
     nodes::FlattenVecs{4,Node{D,Float64},Vector{Node{D,Float64}}}
 
     topo::Topology{D}
-    int_coords_connect::Vector{Vector{Vector{Int}}} #TODO: Improve naming
+    int_coords_connect::Vector{Vector{Vector{Int32}}} #TODO: Improve naming
 
-    node_sets::Dict{String,Set{Int}} = Dict{String,Set{Int}}()
-    edge_sets::Dict{String,Set{Int}} = Dict{String,Set{Int}}()
-    face_sets::Dict{String,Set{Int}} = Dict{String,Set{Int}}()
-    volume_sets::Dict{String,Set{Int}} = Dict{String,Set{Int}}()
+    node_sets::Dict{String,Set{Int32}} = Dict{String,Set{Int32}}()
+    edge_sets::Dict{String,Set{Int32}} = Dict{String,Set{Int32}}()
+    face_sets::Dict{String,Set{Int32}} = Dict{String,Set{Int32}}()
+    volume_sets::Dict{String,Set{Int32}} = Dict{String,Set{Int32}}()
 end
 
 
@@ -32,12 +32,12 @@ function Mesh(topo::Topology{D}, ::ET) where {D,ET<:ElType}
 
     node_type = eltype(get_nodes(topo))
 
-    int_coords_connect = Vector{Vector{Vector{Int}}}(undef, D + 1)
+    int_coords_connect = Vector{Vector{Vector{Int32}}}(undef, D + 1)
 
-    int_coords_connect[2] = [Int[] for _ in get_edges(topo)]
-    int_coords_connect[3] = [Int[] for _ in get_areas(topo)]
+    int_coords_connect[2] = [Int32[] for _ in get_edges(topo)]
+    int_coords_connect[3] = [Int32[] for _ in get_areas(topo)]
     if D >= 3
-        int_coords_connect[4] = [Int[] for _ in get_volumes(topo)]
+        int_coords_connect[4] = [Int32[] for _ in get_volumes(topo)]
     end
 
     nodes = FlattenVecs(get_nodes(topo), node_type[], node_type[], node_type[])
@@ -45,10 +45,22 @@ function Mesh(topo::Topology{D}, ::ET) where {D,ET<:ElType}
     mesh = Mesh{D,ET}(nodes=nodes, topo=topo,
         int_coords_connect=int_coords_connect)
 
+
     add_internal_coords!(mesh, int_coords_connect)
+
+    # current_len = length(topo.is_active_node)
+    # resize!(topo.is_active_node, length(mesh.nodes))
+    # topo.is_active_node[current_len+1:end] .= true # activate all new nodes
 
     mesh
 end
+ 
+function VEMGeo.is_active(n::Node,mesh::Mesh)
+    n.id > length(mesh.topo.nodes) && return true
+    is_active(n,mesh.topo)
+end
+
+# @inline is_active(n::Node,topo::Topology) = topo.is_active_node[n.id]
 
 
 @inline get_order(::Mesh{D,ET}) where {D,K,ET<:ElType{K}} = K
@@ -62,17 +74,17 @@ get_face_moments(mesh::Mesh) = mesh.nodes.v.args[3]
 get_volume_moments(mesh::Mesh) = mesh.nodes.v.args[4]
 
 
-function getnfacemoments(::Int, ::StandardEl{K}, topo::Topology{D}) where {D,K}
+function getnfacemoments(::Integer, ::StandardEl{K}, topo::Topology{D}) where {D,K}
     base_len = get_base_len(2, K - 2, 1)
     return base_len
 end
 
-function getnvolmoments(::Int, ::StandardEl{K}, topo::Topology{D}) where {D,K}
+function getnvolmoments(::Integer, ::StandardEl{K}, topo::Topology{D}) where {D,K}
     base_len = get_base_len(3, K - 2, 1)
     return base_len
 end
 
-function getnfacemoments(area_id::Int, 
+function getnfacemoments(area_id::Integer, 
     ::SerendipityEl{K}, topo::Topology{D}; lazy=true) where {D,K}
     if lazy
         return get_base_len(2, K - 3, 1)
@@ -84,7 +96,7 @@ function getnfacemoments(area_id::Int,
     return get_base_len(2, base_order, 1)
 end
 
-function getnvolmoments(vol_id::Int, 
+function getnvolmoments(vol_id::Integer, 
     ::SerendipityEl{K}, topo::Topology{D}; lazy=true) where {D,K}
     if lazy
         return get_base_len(3, K - 3, 1)
@@ -98,9 +110,9 @@ end
 
 
 function get_iterative_area_node_ids!(
-    face_node_ids::FlattenVecs{3,Int},
+    face_node_ids::FlattenVecs{3,<:Integer},
     area::Area{D}, mesh::Mesh{D,ET},
-    abs_ref_level::Int=typemax(Int)) where {D,K,ET<:ElType{K}}
+    abs_ref_level::Integer=typemax(Int32)) where {D,K,ET<:ElType{K}}
 
     topo = mesh.topo
     vertex_ids = face_node_ids.v.args[1]
@@ -128,7 +140,7 @@ function get_iterative_area_node_ids!(
 end
 
 function add_internal_coords!(mesh::Mesh{D,ET},
-    int_coords_connect::Vector{Vector{Vector{Int}}}
+    int_coords_connect::AbstractVector{<:AbstractVector{<:AbstractVector{<:Integer}}}
             ) where {D,K,ET<:ElType{K}}
 
     topo = mesh.topo
@@ -155,7 +167,7 @@ function add_internal_coords!(mesh::Mesh{D,ET},
         c1, c2 = vertices[edge_nodes[edge.id]]
         # edge_gauss_ids = int_coords_connect[2][edge.id]
 
-        edge_gauss_ids = Vector{Int}(undef, length(g_nodes))
+        edge_gauss_ids = Vector{Int32}(undef, length(g_nodes))
         for i in eachindex(g_nodes)
             new_point_coords = interpolate_edge(g_nodes[i], c1, c2)
 
@@ -182,7 +194,7 @@ function add_internal_coords!(mesh::Mesh{D,ET},
         node_ids = get_area_node_ids(topo, area.id)
 
         num_moments_local = getnfacemoments(area.id, ET(), topo)
-        area_moment_ids = FixedSizeVector{Int}(undef, num_moments_local)
+        area_moment_ids = FixedSizeVector{Int32}(undef, num_moments_local)
 
         for i in eachindex(area_moment_ids)
             # new_point_coords = mean(vertices[id] for id in node_ids)
@@ -201,7 +213,7 @@ function add_internal_coords!(mesh::Mesh{D,ET},
     for vol in RootIterator{D,4}(topo)
         # node_ids = get_volume_node_ids(topo, vol.id) 
         num_moments_local = getnvolmoments(vol.id, ET(), topo)
-        volume_moment_ids = FixedSizeVector{Int}(undef, num_moments_local)
+        volume_moment_ids = FixedSizeVector{Int32}(undef, num_moments_local)
 
         for i in eachindex(volume_moment_ids)
             new_point_coords = zero(Node{D,Float64})
@@ -217,7 +229,7 @@ end
 
 
 function add_mesh_nodes_unique(topo, 
-    nodes_added::Set{Int})
+    nodes_added::Set{<:Integer})
 
     pot_id = length(topo.nodes) + 1
     if pot_id ∉ nodes_added

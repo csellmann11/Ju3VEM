@@ -26,10 +26,10 @@ function add_node_set!(mesh::Mesh,
 
     check_unique && check_unique_set_name(mesh,set_name,:node_sets)
 
-    n_set = Set{Int}()
+    n_set = Set{Int32}()
     for node in Iterators.flatten((get_vertices(mesh),get_gauss_nodes(mesh)))
  
-        !is_active(node) && continue
+        !is_active(node,mesh) && continue
         f(node) && push!(n_set,get_id(node))
     end
 
@@ -57,12 +57,12 @@ function add_manifold_set!(mesh::Mesh,
     manifold_set_name = get_manifold_set_name(manifold_dim)
     check_unique && check_unique_set_name(mesh,set_name,manifold_set_name)
 
-    m_set = Set{Int}() 
+    m_set = Set{Int32}() 
     topo = mesh.topo
 
     for manifold in RootIterator{D}(topo)
         m_node_ids = topo.connectivity[1, D][manifold.id]
-        if all(f(mesh[node_id]) && is_active(mesh[node_id]) for node_id in m_node_ids)
+        if all(f(mesh[node_id]) && is_active(mesh[node_id],topo) for node_id in m_node_ids)
             push!(m_set,manifold.id)
         end
     end
@@ -83,10 +83,10 @@ end
     mesh::Mesh{D,ET}
 
     # dirichlet bcs
-    d_bcs::Dict{Int,Float64} = Dict{Int,Float64}()
+    d_bcs::Dict{Int32,Float64} = Dict{Int32,Float64}()
 
     # neumann bcs
-    n_bcs::Dict{Int,Float64} = Dict{Int,Float64}()
+    n_bcs::Dict{Int32,Float64} = Dict{Int32,Float64}()
 end
 
 function ConstraintHandler{U}(mesh::Mesh{D,ET}) where {D,U,ET}
@@ -97,7 +97,7 @@ end
 
 function function_integration2d(f::F,
     points::AbstractVector{<:StaticVector{2,Float64}};
-    order = 2) where {F <: Function}
+    order = 2) where {F <: Function} 
 
     α = mean(point[1] for point in points)
     gp, gw = get_gauss_legendre(order+1)
@@ -155,7 +155,7 @@ function add_dirichlet_bc!(ch::ConstraintHandler{D,U},
     dh::DofHandler{D,U},
     set_name::String,
     f::F;
-    c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function}
+    c_dofs::AbstractVector{<:Integer} = SVector{U,Int32}(1:U)) where {D,U,F <: Function}
 
     # @warn "add_dirichlet_bc! is deprecated, use add_dirichlet_bc!(ch,dh,fd_col,set_name,f;c_dofs=c_dofs) instead"
 
@@ -175,7 +175,7 @@ function add_dirichlet_bc!(ch::ConstraintHandler{D,U},
     @assert length(dummy_output) == length(c_dofs) "wrong dim of constraint dofs" 
 
     for node_id in node_set
-        !is_active(mesh[node_id]) && continue
+        !is_active(mesh[node_id],mesh) && continue
         dof_ids = get_dofs(dh,node_id)[c_dofs]
          
         f_output = f(mesh[node_id]) 
@@ -192,27 +192,27 @@ end
 """
     add_dirichlet_bc!(ch::ConstraintHandler{D,U,ET},
     dh::DofHandler{D,U},
-    fd_col::Dict{Int,<:FaceData{D}},
+    fd_col::Dict{<:Integer,<:FaceData{D}},
     set_name::String,
     f::F;
-    c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
+    c_dofs::AbstractVector{<:Integer} = SVector{U,Int32}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
 
 Add Dirichlet boundary conditions for a given face set. 
 
 # Arguments
 - `ch::ConstraintHandler{D,U,ET}`: The constraint handler to which Dirichlet BCs will be added
 - `dh::DofHandler{D,U}`: The degree of freedom handler for the mesh
-- `fd_col::Dict{Int,<:FaceData{D}}`: Dictionary mapping face IDs to face data structures
+- `fd_col::Dict{<:Integer,<:FaceData{D}}`: Dictionary mapping face IDs to face data structures
 - `set_name::String`: Name of the face set in the mesh where BCs should be applied
 - `f::Function`: Function which returns the values of the constraint dofs
-- `c_dofs::AbstractVector{Int}`: The degrees of freedom which are constrained
+- `c_dofs::AbstractVector{<:Integer}`: The degrees of freedom which are constrained
 """
 function add_dirichlet_bc!(ch::ConstraintHandler{D,U,ET},
     dh::DofHandler{D,U},
-    fd_col::Dict{Int,<:FaceData{D}},
+    fd_col::Dict{<:Integer,<:FaceData{D}},
     set_name::String,
     f::F;
-    c_dofs::AbstractVector{Int} = SVector{U,Int}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
+    c_dofs::AbstractVector{<:Integer} = SVector{U,Int32}(1:U)) where {D,U,F <: Function,K,ET<:ElType{K}}
 
 
     @assert U >= maximum(c_dofs) "wrong dim of constraint dofs"
@@ -228,7 +228,7 @@ function add_dirichlet_bc!(ch::ConstraintHandler{D,U,ET},
 
     @assert length(dummy_output) == length(c_dofs) "wrong dim of constraint dofs" 
 
-    node_ids_seen = Set{Int}()
+    node_ids_seen = Set{Int32}()
 
     for face_id in face_set
 
@@ -286,7 +286,7 @@ end
 
 """
     add_neumann_bc!(ch::ConstraintHandler{D,U,ET}, dh::DofHandler{D,U}, 
-                    fd_col::Dict{Int,<:FaceData{D}}, set_name::String, 
+                    fd_col::Dict{<:Integer,<:FaceData{D}}, set_name::String, 
                     f::Function) where {D,U,K,ET<:ElType{K}}
 
 Add Neumann boundary conditions to a constraint handler by integrating a given function 
@@ -295,7 +295,7 @@ over faces in a specified face set.
 # Arguments
 - `ch::ConstraintHandler{D,U,ET}`: The constraint handler to which Neumann BCs will be added
 - `dh::DofHandler{D,U}`: The degree of freedom handler for the mesh
-- `fd_col::Dict{Int,<:FaceData{D}}`: Dictionary mapping face IDs to face data structures
+- `fd_col::Dict{<:Integer,<:FaceData{D}}`: Dictionary mapping face IDs to face data structures
 - `set_name::String`: Name of the face set in the mesh where BCs should be applied
 - `f::Function`: Function to integrate over the boundary faces. Should accept 3D coordinates 
                  and return a value compatible with the dot product with base functions
@@ -316,7 +316,7 @@ transformation between 3D and 2D coordinates.
 """
 function add_neumann_bc!(ch::ConstraintHandler{D,U,ET},
     dh::DofHandler{D,U},
-    fd_col::Dict{Int,<:FaceData{D}},
+    fd_col::Dict{<:Integer,<:FaceData{D}},
     set_name::String,
     f::F) where {D,U,K,ET<:ElType{K},F <: Function}
 
@@ -372,8 +372,8 @@ function add_neumann_bc!(
 
 
 
-	# edge_node_ids = @MVector zeros(Int, K + 1)
-	edge_node_ids = zero(MVector{K+1,Int})
+
+	edge_node_ids = zero(MVector{K+1,Int32})
 	# Process each edge in the specified edge set
 	for edge_id in edge_ids
 		# Get edge topology and geometric nodes

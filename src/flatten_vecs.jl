@@ -46,8 +46,8 @@ end
     FlattenVecs{N,T,Vector{T}}()
 
 
-Base.@propagate_inbounds Base.getindex(t::FlattenVecs, idx::Int) = t.v[idx]  
-Base.@propagate_inbounds Base.setindex!(t::FlattenVecs, val, idx::Int) = t.v[idx] = val
+Base.@propagate_inbounds Base.getindex(t::FlattenVecs, idx::Integer) = t.v[idx]  
+Base.@propagate_inbounds Base.setindex!(t::FlattenVecs, val, idx::Integer) = t.v[idx] = val
 
 Base.length(t::FV) where FV<:FlattenVecs = length(t.v)
 Base.size(t::FV) where FV<:FlattenVecs = (length(t),)

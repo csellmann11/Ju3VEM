@@ -131,7 +131,7 @@ end
     v
 end
 
-function similar(::Type{CachedArray{T,N,A}},s::Tuple{Vararg{Int}}) where {T,N,A}
+function similar(::Type{CachedArray{T,N,A}},s::Tuple{Vararg{<:Integer}}) where {T,N,A}
   a = similar(A,s)
   CachedArray(a)
 end

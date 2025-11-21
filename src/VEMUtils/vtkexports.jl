@@ -3,20 +3,22 @@ function vtk_volume_helper(topo::Topology{D},
     volume::Volume{D},
     area_vertices) where D
 
-    area_ids  = Int[]
+    area_ids  = Int32[]
     iterate_volume_areas(area_vertices,topo,volume.id) do area, area_vertices,_
         push!(area_ids, area.id)
     end
-    unique_vol_node_ids = get_unique_values(area_vertices,area_ids)
-    return unique_vol_node_ids,get.(Ref(area_vertices),area_ids,nothing)
+    # unique_vol_node_ids = get_unique_values(area_vertices,area_ids)
+    vertex_ids = get.(Ref(area_vertices),area_ids,nothing)
+    unique_vol_node_ids = unique(Iterators.flatten(vertex_ids))
+    return unique_vol_node_ids,vertex_ids
 end
 
 
 
 
-@inline trail_zeros3(v::SVector{1,T}) where T= SVector{3}(v[1],zero(T),zero(T))
-@inline trail_zeros3(v::SVector{2,T}) where T = SVector{3}(v[1],v[2],zero(T))
-@inline trail_zeros3(v::SVector{3,T}) where T = v
+@inline trail_zeros3(v::StaticVector{1,T}) where T = SVector{3}(v[1],zero(T),zero(T))
+@inline trail_zeros3(v::StaticVector{2,T}) where T = SVector{3}(v[1],v[2],zero(T))
+@inline trail_zeros3(v::StaticVector{3,T}) where T = SVector{3}(v)
 
 function write_vtm(topo::Topology{D}, 
     filename::String = "vtk/sol_to_vtk",
@@ -157,7 +159,7 @@ function write_vtk(topo::Topology{D},
     @assert (dh !== nothing && u !== nothing) || (dh === nothing && u === nothing)
 
 
-    raw_points = filter(is_active,get_nodes(topo))
+    raw_points = filter(x -> is_active(x,topo),get_nodes(topo))
 
 
 

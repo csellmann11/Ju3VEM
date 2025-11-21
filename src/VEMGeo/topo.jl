@@ -1,13 +1,12 @@
 
 
-mutable struct Node{D,T} <: StaticVector{D,T}
-    id::Int
-    const coords::SVector{D,T}
+struct Node{D,T} <: StaticVector{D,T}
+    id::Int32
+    coords::SVector{D,T}
 end
 
-function Node(id::Int, coords::AbstractVector{T}) where T
-    D = length(typeof(coords))
-    Node{D,T}(id, coords)
+function Node(id::Integer, coords::StaticVector{D,T}) where {D,T}
+    Node{D,T}(Int32(id), coords)
 end
 
 Node(coords::AbstractVector) = Node(-1, coords)
@@ -18,7 +17,8 @@ Node(coords::StaticVector) = Node(-1, coords)
 get_coords(n::Node) = n.coords
 get_id(n::Node) = n.id
 get_id(i::Integer) = i
-Base.getindex(n::Node{D,T}, i::Int) where {D,T} = get_coords(n)[i]
+Base.getindex(n::Node{D,T}, i::Int32) where {D,T} = get_coords(n)[i]
+Base.getindex(n::Node{D,T}, i::Int64) where {D,T} = get_coords(n)[i]
 
 Base.zero(::Type{Node{D,T}}) where {D,T} = Node(zero(SVector{D,T})) # to create placeholder nodes
 Base.zero(n::Node) = zero(typeof(n))
@@ -28,41 +28,29 @@ Base.rand(::Type{Node{D,T}}) where {D,T} = Node(-1, @SVector rand(T,D))
 #########################
 # NManifold
 #########################
-@kwdef mutable struct NManifold{N,D}
-    id::Int
-    is_root::Bool = true
-    const refinement_level::Int
+@kwdef struct NManifold{N,D}
+    id::Int32
+    refinement_level::Int32
 
     # tree structure
-    const parent_id::Int
-    const childs::Vector{Int} = Int[]
+    parent_id::Int32
+    childs::Vector{Int32} = Int32[]
 end
 
 const Edge{D} = NManifold{2,D}
 const Area{D} = NManifold{3,D}
 const Volume{D} = NManifold{4,D}
 
-function NManifold{N,D}(id::Int, refinement_level::Int, parent_id::Int) where {N,D}
-    NManifold{N,D}(id=id, refinement_level=refinement_level, parent_id=parent_id)
+function NManifold{N,D}(id::Integer, refinement_level::Integer, parent_id::Integer) where {N,D}
+    NManifold{N,D}(id=Int32(id), refinement_level=Int32(refinement_level), parent_id=Int32(parent_id))
 end
 
-function activate!(mf::MF) where MF <: Union{<:NManifold,<:Node}
-    mf.id = abs(mf.id)
-    return mf
-end
+# function activate!(mf::MF) where MF <: Union{<:NManifold,<:Node}
+#     mf.id = abs(mf.id)
+#     return mf
+# end
 
-function deactivate!(mf::Node)
-    mf.id = -abs(mf.id)
-    return mf
-end
 
-function deactivate!(mf::NManifold)
-    mf.id = -abs(mf.id)
-    return mf
-end
-
-get_id(mf::NManifold) = mf.id
-is_active(m::Union{Node,NManifold}) = m.id > 0
 
 # is_active_root(mf::NManifold) = is_root(mf) && is_active(mf)
 
@@ -75,31 +63,34 @@ const ID_VEC_TYPE{T} = FixedSizeVector{T,Memory{T}}
 @kwdef struct Topology{D}
 
     nodes::Vector{Node{D,Float64}}              = Node{D,Float64}[]
-    edges::OrderedDict{ID_VEC_TYPE{Int},Edge{D}}     = OrderedDict{ID_VEC_TYPE{Int},Edge{D}}()
-    areas::OrderedDict{ID_VEC_TYPE{Int},Area{D}}     = OrderedDict{ID_VEC_TYPE{Int},Area{D}}()
-    volumes::OrderedDict{ID_VEC_TYPE{Int},Volume{D}} = OrderedDict{ID_VEC_TYPE{Int},Volume{D}}()
+    edges::OrderedDict{ID_VEC_TYPE{Int32},Edge{D}}     = OrderedDict{ID_VEC_TYPE{Int32},Edge{D}}()
+    areas::OrderedDict{ID_VEC_TYPE{Int32},Area{D}}     = OrderedDict{ID_VEC_TYPE{Int32},Area{D}}()
+    volumes::OrderedDict{ID_VEC_TYPE{Int32},Volume{D}} = OrderedDict{ID_VEC_TYPE{Int32},Volume{D}}()
 
+    is_active_node::Vector{Bool} = Bool[]
 
-    connectivity::Matrix{Vector{ID_VEC_TYPE{Int}}} = begin
-        mat = Matrix{Vector{ID_VEC_TYPE{Int}}}(undef, 4, 4)
+    is_root_edge::Vector{Bool} = Bool[]
+    is_active_edge::Vector{Bool} = Bool[]
+    
+    is_root_area::Vector{Bool} = Bool[]
+    is_active_area::Vector{Bool} = Bool[]
+
+    is_root_volume::Vector{Bool} = Bool[]
+    is_active_volume::Vector{Bool} = Bool[]
+
+    connectivity::Matrix{Vector{ID_VEC_TYPE{Int32}}} = begin
+        mat = Matrix{Vector{ID_VEC_TYPE{Int32}}}(undef, 4, 4)
         mat[1, 2] = edges.keys
         mat[1, 3] = areas.keys
         mat[3, 4] = volumes.keys #! volumes are index by face_ids
-        mat[1, 4] = Vector{ID_VEC_TYPE{Int}}()
+        mat[1, 4] = Vector{ID_VEC_TYPE{Int32}}()
         for i in 1:D+1, j in 2:i-1
             if i != j && (i,j) != (4,3)
-                mat[j, i] = Vector{ID_VEC_TYPE{Int}}()
+                mat[j, i] = Vector{ID_VEC_TYPE{Int32}}()
             end
         end 
         mat
     end
-
-    #TODO: adapt the type of the vector
-    el_neighs::Dict{Int,Vector{Int}} = Dict{Int,Vector{Int}}()
-
-    #Here also hanging nodes are contained wich are not found in the connectivity
-    nids_col::Dict{Int,Vector{Int}} = Dict{Int,Vector{Int}}()
-    boundary_vec::BitVector = falses(0)
 end
 
 @inline get_nodes(topo::Topology{D}) where D = topo.nodes::Vector{Node{D,Float64}}
@@ -117,20 +108,20 @@ function get_geo_vec(::Any, ::Val{N}) where {N}
 end
 
 #Info: access volume information
-@inline get_volume_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[1, 4]
-@inline get_volume_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_node_ids(topo)[id]
-@inline get_volume_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[2, 4]
-@inline get_volume_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_edge_ids(topo)[id]
-@inline get_volume_area_ids(topo)::Vector{ID_VEC_TYPE{Int}}      = topo.connectivity[3, 4]
-@inline get_volume_area_ids(topo, id::Integer)::ID_VEC_TYPE{Int}     = get_volume_area_ids(topo)[id]
+@inline get_volume_node_ids(topo)::Vector{ID_VEC_TYPE{Int32}}      = topo.connectivity[1, 4]
+@inline get_volume_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}     = get_volume_node_ids(topo)[id]
+@inline get_volume_edge_ids(topo)::Vector{ID_VEC_TYPE{Int32}}      = topo.connectivity[2, 4]
+@inline get_volume_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}     = get_volume_edge_ids(topo)[id]
+@inline get_volume_area_ids(topo)::Vector{ID_VEC_TYPE{Int32}}      = topo.connectivity[3, 4]
+@inline get_volume_area_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}     = get_volume_area_ids(topo)[id]
 #Info: access face information
-@inline get_area_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 3]
-@inline get_area_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_area_node_ids(topo)[id]
-@inline get_area_edge_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[2, 3]
-@inline get_area_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_area_edge_ids(topo)[id]
+@inline get_area_node_ids(topo)::Vector{ID_VEC_TYPE{Int32}}        = topo.connectivity[1, 3]
+@inline get_area_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}       = get_area_node_ids(topo)[id]
+@inline get_area_edge_ids(topo)::Vector{ID_VEC_TYPE{Int32}}        = topo.connectivity[2, 3]
+@inline get_area_edge_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}       = get_area_edge_ids(topo)[id]
 #Info: access edge information
-@inline get_edge_node_ids(topo)::Vector{ID_VEC_TYPE{Int}}        = topo.connectivity[1, 2]
-@inline get_edge_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int}       = get_edge_node_ids(topo)[id]
+@inline get_edge_node_ids(topo)::Vector{ID_VEC_TYPE{Int32}}        = topo.connectivity[1, 2]
+@inline get_edge_node_ids(topo, id::Integer)::ID_VEC_TYPE{Int32}       = get_edge_node_ids(topo)[id]
 
 
 @inline add_volume_node_id!(topo, dest::Integer, val::Integer) =
@@ -161,12 +152,89 @@ end
 @inline __default_node_id(topo) = length(get_nodes(topo)) + 1
 
 
+
+function change_activity!(v::AbstractVector{Bool},id::Integer,activity::Bool)
+    v[id] = activity
+    return nothing
+end
+
+@inline change_activity!(n::Node,topo::Topology,activity::Bool) = change_activity!(topo.is_active_node,n.id,activity)
+@inline change_activity!(m::NManifold{2},topo::Topology,activity::Bool) = change_activity!(topo.is_active_edge,m.id,activity)
+@inline change_activity!(m::NManifold{3},topo::Topology,activity::Bool) = change_activity!(topo.is_active_area,m.id,activity)
+@inline change_activity!(m::NManifold{4},topo::Topology,activity::Bool) = change_activity!(topo.is_active_volume,m.id,activity)
+
+@inline activate!(m,topo::Topology) = change_activity!(m,topo,true)
+@inline deactivate!(m,topo::Topology) = change_activity!(m,topo,false)
+
+
+
+function change_root_status!(v::AbstractVector{Bool},id::Integer,status::Bool)
+    v[id] = status
+    return nothing
+end
+
+@inline change_root_status!(m::NManifold{2},topo::Topology,status::Bool) = change_root_status!(topo.is_root_edge,m.id,status)
+@inline change_root_status!(m::NManifold{3},topo::Topology,status::Bool) = change_root_status!(topo.is_root_area,m.id,status)
+@inline change_root_status!(m::NManifold{4},topo::Topology,status::Bool) = change_root_status!(topo.is_root_volume,m.id,status)
+
+@inline make_root!(m,topo::Topology) = change_root_status!(m,topo,true)
+@inline remove_root!(m,topo::Topology) = change_root_status!(m,topo,false)
+
+function init_activity!(topo::Topology,id::Integer)
+    if id > length(topo.is_active_node)
+        resize_with_trailing_zeros!(topo.is_active_node, 2*id)
+    end
+    topo.is_active_node[id] = true
+    return nothing
+end
+
+function init_activity_and_root!(topo::Topology,id::Integer,::Val{N}) where N
+    root_vec,activity_vec = if N == 2
+        topo.is_root_edge,topo.is_active_edge
+    elseif N == 3
+        topo.is_root_area,topo.is_active_area
+    elseif N == 4
+        topo.is_root_volume,topo.is_active_volume
+    end
+    if id > length(root_vec)
+        resize_with_trailing_zeros!(root_vec, 2*id)
+    end
+    root_vec[id] = true
+
+    if id > length(activity_vec)
+        resize_with_trailing_zeros!(activity_vec, 2*id)
+    end
+    
+    activity_vec[id] = true
+    return nothing
+end
+    
+
+
+
+
+
+
+get_id(mf::NManifold) = mf.id
+@inline is_active(n::Node,topo::Topology) = topo.is_active_node[n.id]
+@inline is_active(m::NManifold{2},topo::Topology) = topo.is_active_edge[m.id]
+@inline is_active(m::NManifold{3},topo::Topology) = topo.is_active_area[m.id]
+@inline is_active(m::NManifold{4},topo::Topology) = topo.is_active_volume[m.id]
+
+
+
+
+
+
+
 function add_node!(coords::AbstractVector,
     topo::Topology{D},
     id=__default_node_id(topo)) where {D}
 
     node = Node(id, coords)
-    push!(get_nodes(topo), node)
+    nodes = get_nodes(topo)
+    push!(nodes, node)
+    init_activity!(topo,id)
     return id
 end
 function add_node!(node::Node,
@@ -179,21 +247,21 @@ end
 
 function rotate_to_min(v::AbstractVector{<:Integer})
     # Rotate the vector so that the smallest element is first
-    dest = ID_VEC_TYPE{Int}(undef, length(v))
+    dest = ID_VEC_TYPE{Int32}(undef, length(v))
     circshift!(dest,v,-(argmin(v) - 1))
     return dest
 end
 
-@inline edge_hash(n1::Int, n2::Int) = ID_VEC_TYPE(SVector(minmax(n1, n2)))
-@inline edge_hash(v::Union{SVector{2,Int},Tuple{Int,Int}}) = edge_hash(v...)
+@inline edge_hash(n1::Integer, n2::Integer) = ID_VEC_TYPE(SVector(minmax(Int32(n1), Int32(n2))))
+@inline edge_hash(v::Union{SVector{2,I},Tuple{I,I}}) where I<:Integer = edge_hash(v...)
 @inline area_hash(v) = rotate_to_min(v)
 # @inline volume_hash(v) = sort!(ID_VEC_TYPE(v))
 @inline volume_hash(v) = rotate_to_min(v)
 
-function add_edge!(node_ids::AbstractVector,
+function add_edge!(node_ids::AbstractVector{<:Integer},
     topo::Topology{D},
-    parent_id::Int=0,
-    parent_ref_level::Int=0) where D
+    parent_id::Integer=Int32(0),
+    parent_ref_level::Integer=Int32(0)) where D
 
     @assert length(node_ids) == 2
 
@@ -205,31 +273,31 @@ function add_edge!(node_ids::AbstractVector,
     idx = OrderedCollections.ht_keyindex2(topo.edges, generated_hash)
     id = if idx <= 0
         topo.edges[generated_hash] = Edge{D}(temp_id, parent_ref_level + 1, parent_id)
+        init_activity_and_root!(topo,temp_id,Val(2))
         temp_id
     else 
         edge = topo.edges.vals[idx]
-        activate!(edge)
+        activate!(edge,topo)
         edge.id
-        
     end
     
     return id
 end
 
-function activate!(area::Area{D}, topo::Topology{D})::Nothing where D
+function full_activate!(area::Area{D}, topo::Topology{D})::Nothing where D
     area.id > 0 && return nothing
-    activate!(area)
+    activate!(area,topo)
     for edge_id in get_area_edge_ids(topo,area.id)
         edge = get_edges(topo)[edge_id]
-        activate!(edge)
+        activate!(edge,topo)
     end
     nothing
 end
 
-function add_area!(_node_ids::AbstractVector{Int},
+function add_area!(_node_ids::AbstractVector{<:Integer},
     topo::Topology{D},
-    parent_id::Int=0,
-    parent_ref_level::Int=0) where D
+    parent_id::Integer=Int32(0),
+    parent_ref_level::Integer=Int32(0)) where D
 
     area_dict = topo.areas
     temp_id = length(area_dict) + 1
@@ -249,13 +317,14 @@ function add_area!(_node_ids::AbstractVector{Int},
     area_found = (idx > 0)
     if !area_found
         area_dict[generated_hash] = Area{D}(temp_id, parent_ref_level + 1, parent_id)
+        init_activity_and_root!(topo,temp_id,Val(3))
         idx = temp_id
     end
     
     area = area_dict.vals[idx]
 
  
-    !is_active(area) && activate!(area, topo)
+    !is_active(area,topo) && full_activate!(area, topo)
     id = area.id
     # id != temp_id && return area.id
     area_found && return area.id
@@ -263,42 +332,46 @@ function add_area!(_node_ids::AbstractVector{Int},
     node_ids = get_area_node_ids(topo, id)
 
 
-    area_edge_ids = ID_VEC_TYPE{Int}(undef,length(node_ids))
+    area_edge_ids = ID_VEC_TYPE{Int32}(undef,length(node_ids))
     push!(get_area_edge_ids(topo), area_edge_ids)
     for (i, node_id) in enumerate(node_ids)
         ip1 = get_next_idx(node_ids, i)
         edge_id = add_edge!(SA[node_id, node_ids[ip1]],
-            topo, 0, parent_ref_level)
+            topo, Int32(0) , parent_ref_level)
 
         area_edge_ids[i] = edge_id
     end
     return id
 end
 
-function activate!(volume::Volume{D}, topo::Topology{D})::Nothing where D
+function full_activate!(volume::Volume{D}, topo::Topology{D})::Nothing where D
     volume.id > 0 && return nothing
-    activate!(volume)
+    activate!(volume,topo)
 
     for area_id in get_volume_area_ids(topo,volume.id)
         area = get_areas(topo)[area_id]
-        activate!(area)
+        activate!(area,topo)
     end
     nothing
 end
 
 
-function add_volume!(face_ids::AbstractVector{Int},
+function add_volume!(face_ids::AbstractVector{<:Integer},
     topo::Topology{D},
-    parent_id::Int=0,
-    parent_ref_level::Int=0) where D
+    parent_id::Integer=Int32(0),
+    parent_ref_level::Integer=Int32(0)) where D
     
     volume_dict = topo.volumes
     temp_id = length(volume_dict) + 1
 
     volume = get!(volume_dict, volume_hash(face_ids),
         Volume{D}(temp_id, parent_ref_level + 1, parent_id))
+    
+    if volume.id == temp_id
+        init_activity_and_root!(topo,temp_id,Val(4))
+    end
 
-    !is_active(volume) && activate!(volume, topo)
+    !is_active(volume,topo) && full_activate!(volume, topo)
     id = volume.id 
 
     
@@ -307,7 +380,7 @@ function add_volume!(face_ids::AbstractVector{Int},
         area_node_ids_full = get_area_node_ids(topo) 
 
         id_set = Set(Iterators.flatten(area_node_ids_full[face_ids]))
-        ids = FixedSizeVector{Int}(undef, length(id_set))
+        ids = FixedSizeVector{Int32}(undef, length(id_set))
         copyto!(ids, id_set)
 
         push!(get_volume_node_ids(topo), ids)
@@ -317,25 +390,29 @@ function add_volume!(face_ids::AbstractVector{Int},
 end
 
 
-function add_volume!(node_ids_col::AbstractVector{<:AbstractVector{Int}},
+function add_volume!(node_ids_col::AbstractVector{<:AbstractVector{<:Integer}},
     topo::Topology{D},
-    parent_id::Int=0,
-    parent_ref_level::Int=0) where D
+    parent_id::Integer=Int32(0),
+    parent_ref_level::Integer=Int32(0)) where D
 
     n_faces = length(node_ids_col)
     volume_dict = topo.volumes
     temp_id = length(volume_dict) + 1
  
 
-    _face_ids = ID_VEC_TYPE{Int}(undef, n_faces)
+    _face_ids = ID_VEC_TYPE{Int32}(undef, n_faces)
 
     for (i, node_ids) in enumerate(node_ids_col)
-        face_id = add_area!(node_ids, topo, 0, parent_ref_level)
+        face_id = add_area!(node_ids, topo, Int32(0), parent_ref_level)
         _face_ids[i] = face_id
     end
 
     volume = get!(volume_dict, volume_hash(_face_ids),
         Volume{D}(temp_id, parent_ref_level + 1, parent_id))
+
+    if volume.id == temp_id
+        init_activity_and_root!(topo,temp_id,Val(4))
+    end
 
     activate!(volume, topo)
     id = volume.id
@@ -349,19 +426,22 @@ function add_volume!(node_ids_col::AbstractVector{<:AbstractVector{Int}},
 end
 
 
+@inline is_root(m::NManifold{2},topo::Topology) = topo.is_root_edge[m.id]
+@inline is_root(m::NManifold{3},topo::Topology) = topo.is_root_area[m.id]
+@inline is_root(m::NManifold{4},topo::Topology) = topo.is_root_volume[m.id]
 
+# @inline is_root(mf::NManifold) = mf.is_root
 
-@inline is_root(mf::NManifold) = mf.is_root
-@inline is_active_root(mf::NManifold) = is_root(mf) && is_active(mf)
+@inline is_active_root(mf::NManifold,topo::Topology) = is_root(mf,topo) && is_active(mf,topo)
 
 #TODO: check performance implications of union return type
-@inline function get_edge(n1::Int, n2::Int, topo::Topology{D})::Edge{D} where D
+@inline function get_edge(n1::Int32, n2::Int32, topo::Topology{D})::Edge{D} where D
     edge = get(topo.edges, edge_hash(SVector(n1, n2)), nothing)
     @assert edge !== nothing "Edge not found"
     return edge
 end
 
-@inline function has_edge(n1::Int, n2::Int, topo::Topology{D}) where D
+@inline function has_edge(n1::Int32, n2::Int32, topo::Topology{D}) where D
     edge_hash = edge_hash(SVector(n1, n2))
     return haskey(topo.edges, edge_hash)
 end
@@ -369,7 +449,7 @@ end
 
 @inline get_edge(n1::Node, n2::Node, topo::Topology) = get_edge(n1.id, n2.id, topo)
 
-@inline function get_face(v::AbstractVector{Int}, topo::Topology{D}) where D
+@inline function get_face(v::AbstractVector{Int32}, topo::Topology{D}) where D
     area_hash = area_hash(v)
     return get_areas(topo)[area_hash]
 end
@@ -411,12 +491,12 @@ function RootIterator{Idx}(topo::Topology{D}) where {D,Idx}
 end
 
 function RootIterator{D,Idx}(topo::Topology{D}) where {D,Idx}
-    state_is_root::BitVector = is_active_root.(get_geo_vec(topo, Val(Idx)))
+    state_is_root::BitVector = is_active_root.(get_geo_vec(topo, Val(Idx)),Ref(topo))
     return RootIterator{D,Idx}(topo, state_is_root)
 end
 
 function RootIterator{D,1}(topo::Topology{D}) where {D}
-    state_is_root::BitVector = is_active.(get_geo_vec(topo, Val(1)))
+    state_is_root::BitVector = is_active.(get_geo_vec(topo, Val(1)),Ref(topo))
     # state_is_root = trues(length(get_nodes(topo)))
     return RootIterator{D,1}(topo, state_is_root)
 end
@@ -432,7 +512,7 @@ function Base.iterate(r::RootIterator{D,Idx}, state=1) where {D,Idx}
 
         # When an element is coarsed also the other childs are coarsed
         # which are yet to be iterated
-        if r.state_is_root[state] && is_active(geo)
+        if r.state_is_root[state] && is_active(geo,r.topo)
             return geo, state + 1
         end
         state += 1
@@ -440,13 +520,39 @@ function Base.iterate(r::RootIterator{D,Idx}, state=1) where {D,Idx}
     return nothing
 end
 
+function get_num_active_nodes(topo::Topology)
+    return sum(topo.is_active_node)
+end
 
-function get_num_active_roots(geo_vec::AbstractVector{T}) where T<:NManifold
-    return count(geo -> is_root(geo) && is_active(geo), geo_vec)
+function get_num_active_root_edges(topo::Topology)
+    return sum(a*r for (a,r) in zip(topo.is_active_edge,topo.is_root_edge))
+end
+
+function get_num_active_root_areas(topo::Topology)
+    return sum(a*r for (a,r) in zip(topo.is_active_area,topo.is_root_area))
+end
+
+function get_num_active_root_volumes(topo::Topology)
+    return sum(a*r for (a,r) in zip(topo.is_active_volume,topo.is_root_volume))
+end
+
+function get_num_active_roots(geo_vec::AbstractVector{T},topo::Topology) where T<:NManifold
+    return count(geo -> is_root(geo,topo) && is_active(geo,topo), geo_vec)
 end
 
 # Base.length(r::RootIterator{D,Idx}) where {D,Idx} = sum(r.state_is_root)
-Base.length(r::RootIterator{D,Idx}) where {D,Idx} = get_num_active_roots(get_geo_vec(r.topo, Val(Idx)))
+# Base.length(r::RootIterator{D,Idx}) where {D,Idx} = get_num_active_roots(get_geo_vec(r.topo, Val(Idx)),r.topo) 
+function Base.length(r::RootIterator{D,Idx}) where {D,Idx}
+    if Idx == 1
+        return get_num_active_nodes(r.topo)
+    elseif Idx == 2
+        return get_num_active_root_edges(r.topo)
+    elseif Idx == 3
+        return get_num_active_root_areas(r.topo)
+    elseif Idx == 4
+        return get_num_active_root_volumes(r.topo)
+    end
+end
 
 
 #############################################
@@ -454,8 +560,9 @@ Base.length(r::RootIterator{D,Idx}) where {D,Idx} = get_num_active_roots(get_geo
 #############################################
 @kwdef mutable struct CustStack{T,V<:AbstractVector{T}} <: AbstractVector{T}
     const stack::V
-    last ::Int = 0
+    last ::Int32 = Int32(0)
 end
+
 
 Base.length(aq::CustStack) = aq.last
 Base.size(aq::CustStack) = (aq.last,)
@@ -473,7 +580,7 @@ function pop_last!(aq::CustStack)
     return aq.stack[aq.last + 1]
 end
 
-Base.@propagate_inbounds function Base.getindex(aq::CustStack,i::Int) 
+Base.@propagate_inbounds function Base.getindex(aq::CustStack,i::Integer) 
     @boundscheck (i <= aq.last)
     return aq.stack[i]
 end
@@ -492,68 +599,43 @@ end
 
 """
     get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
-        abs_ref_level::Int=typemax(Int)) where D
+        abs_ref_level::Int32=typemax(Int32)) where D
 
 Get the node ids of the mesh of an area.
 
 # Arguments
 - `area::Area{D}`: The area to get the mesh node ids of.
 - `topo::Topology{D}`: The topology to get the mesh node ids from.
-- `abs_ref_level::Int`: Does not go below this refinement level in the recursive search
+- `abs_ref_level::Int32`: Does not go below this refinement level in the recursive search
 """
-# function get_iterative_area_vertex_ids!(
-#     vertex_ids::AbstractVector{Int},
-#     area::Area{D}, topo::Topology{D},
-#     abs_ref_level::Int=typemax(Int)) where D
-
-#     empty!(vertex_ids)
-#     cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge)
-#     iterate_element_edges(topo, area.id, cond) do node_id, _, _
-#         push!(vertex_ids, node_id)
-#     end
-#     return nothing
-# end
-
-
-# function get_iterative_area_vertex_ids(area::Area{D}, topo::Topology{D},
-#     abs_ref_level::Int=typemax(Int)) where D
-
-#     vertex_ids = Int[]
-#     get_iterative_area_vertex_ids!(vertex_ids, area, topo, abs_ref_level)
-#     return vertex_ids
-# end
-
-
-
-
-function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int},
-    area_id::Int,
+function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int32},
+    area_id::Int32,
     topo::Topology{D},
-    abs_ref_level::Int=typemax(Int)) where D
+    abs_ref_level::Int32=typemax(Int32)) where D
     
-    cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge)
+    cond(edge) = edge.refinement_level == abs_ref_level || is_root(edge,topo)
     iterate_element_edges(topo, area_id, cond) do node_id, _, _
         push!(vertex_ids, node_id)
     end
     return nothing
 end
 
-function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int},
+function get_iterative_area_vertex_ids!(vertex_ids::AbstractVector{Int32},
     area::Area{D},
     topo::Topology{D},
-    abs_ref_level::Int=typemax(Int)) where D
+    abs_ref_level::Int32=typemax(Int32)) where D
     
     get_iterative_area_vertex_ids!(vertex_ids, area.id, topo, abs_ref_level)
 end
 
 
-function get_iterative_area_vertex_ids(area_id::Int, 
+function get_iterative_area_vertex_ids(area_id::Integer, 
     topo::Topology{D},
-    abs_ref_level::Int=typemax(Int)) where D 
+    abs_ref_level::Int32=typemax(Int32)) where D 
 
  
     @no_escape begin
-        _vertex_ids = CustStack(stack = @alloc(Int,100)) 
+        _vertex_ids = CustStack(stack = @alloc(Int32,100)) 
         get_iterative_area_vertex_ids!(_vertex_ids, area_id, topo, abs_ref_level)
         stack_to_fixed_size_vector(_vertex_ids)
     end
@@ -561,11 +643,11 @@ end
 
 
 @inline get_iterative_area_vertex_ids(area::Area, 
-                    topo,abs_ref_level::Int=typemax(Int)) =       
+                    topo,abs_ref_level::Int32=typemax(Int32)) =       
                         get_iterative_area_vertex_ids(area.id, topo, abs_ref_level)
 
 """
-iterate_element_edges(f::F1,topo::Topology{D},area_id::Int, cond::F2 = is_root)
+iterate_element_edges(f::F1,topo::Topology{D},area_id::Int32, cond::F2 = is_root)
 
 Iterate over the edges of an element and apply a function on the edges
 
@@ -573,7 +655,7 @@ Iterate over the edges of an element and apply a function on the edges
 - `f::Function`: The function to apply on the edges. f takes 
 the `node_id`, `edge_id` and `parent_edge_id` as arguments
 """
-# function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int, cond::F2=is_root) where {D,F1,F2}
+# function iterate_element_edges(fun::F1, topo::Topology{D}, area_id::Int32, cond::F2=is_root) where {D,F1,F2}
 #     edge_ids = topo.connectivity[2, 3][area_id]
 #     edges = get_edges(topo)
 
@@ -600,8 +682,8 @@ the `node_id`, `edge_id` and `parent_edge_id` as arguments
 
 function iterate_element_edges(fun::F1, 
     topo::Topology{D}, 
-    area_id::Int, 
-    cond::F2=is_root) where {D,F1,F2}
+    area_id::Int32, 
+    cond::F2=x -> is_root(x,topo)) where {D,F1,F2}
     
     edge_ids = get_area_edge_ids(topo, area_id)
     edges = get_edges(topo)
@@ -610,7 +692,7 @@ function iterate_element_edges(fun::F1,
     area_node_ids = get_area_node_ids(topo, area_id)
 
     @no_escape begin
-        aq = CustStack(stack = @alloc(Int,100))
+        aq = CustStack(stack = @alloc(Int32,100))
 
         last_node_id = first(area_node_ids)
         for parent_edge_id in edge_ids
@@ -648,76 +730,76 @@ end
 
 
 
-"""
-    apply_f_on(f::F1, cond::F2,
-        feature::T, features::AbstractVector{T},
-        rev_child_order::Bool) where {T,F1<:Function,F2<:Function}
+# """
+#     apply_f_on(f::F1, cond::F2,
+#         feature::T, features::AbstractVector{T},
+#         rev_child_order::Bool) where {T,F1<:Function,F2<:Function}
 
-Apply a function on a feature and its children if the condition is true.
+# Apply a function on a feature and its children if the condition is true.
 
-# Arguments 
-- `f::Function`: The function to apply on the feature. f takes 
-the `feature`, `rev_child_order` as arguments
-- `cond::Function`: The condition to check if the feature should be applied.
-- `feature::T`: The feature to apply the function on.
-- `features::AbstractVector{T}`: The vector of features to apply the function on.
-- `rev_child_order::Bool`: If true, the child order is reversed.
-"""
-function apply_f_on(f::F1, cond::F2,
-    feature::T, features::AbstractVector{T},
-    rev_child_order::Bool) where {T,F1<:Function,F2<:Function}
-    if cond(feature) && is_active(feature)
-        f(feature, rev_child_order)
-        return nothing
-    end
+# # Arguments 
+# - `f::Function`: The function to apply on the feature. f takes 
+# the `feature`, `rev_child_order` as arguments
+# - `cond::Function`: The condition to check if the feature should be applied.
+# - `feature::T`: The feature to apply the function on.
+# - `features::AbstractVector{T}`: The vector of features to apply the function on.
+# - `rev_child_order::Bool`: If true, the child order is reversed.
+# """
+# function apply_f_on(f::F1, cond::F2,
+#     feature::T, features::AbstractVector{T},
+#     rev_child_order::Bool) where {T,F1<:Function,F2<:Function}
+#     if cond(feature) && is_active(feature)
+#         f(feature, rev_child_order)
+#         return nothing
+#     end
 
-    # If this feature has no children, terminate traversal safely
-    # if isempty(feature.childs)
-    #     return nothing
-    # end
-    # transform_fun = ifelse(rev_child_order,reverse,identity)
-    # for child_id in transform_fun(feature.childs)
-    #     apply_f_on(f, cond, features[child_id], features, false)
-    # end
+#     # If this feature has no children, terminate traversal safely
+#     # if isempty(feature.childs)
+#     #     return nothing
+#     # end
+#     # transform_fun = ifelse(rev_child_order,reverse,identity)
+#     # for child_id in transform_fun(feature.childs)
+#     #     apply_f_on(f, cond, features[child_id], features, false)
+#     # end
 
-    child_id1 = feature.childs[1+rev_child_order]
-    apply_f_on(f, cond, features[child_id1], features, false)
+#     child_id1 = feature.childs[1+rev_child_order]
+#     apply_f_on(f, cond, features[child_id1], features, false)
 
-    child_id2 = feature.childs[2-rev_child_order]
-    apply_f_on(f, cond, features[child_id2], features, true)
+#     child_id2 = feature.childs[2-rev_child_order]
+#     apply_f_on(f, cond, features[child_id2], features, true)
 
-    nothing
-end
+#     nothing
+# end
 
-apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =
-    apply_f_on(f, is_root, feature, features, rev_child_order)
+# apply_f_on_roots(f, feature, features, rev_child_order::Bool=false) =
+#     apply_f_on(f, is_root, feature, features, rev_child_order)
 
 
-function apply_f_on_unordered(f::F1, 
-    cond::F2, 
-    feature::T, 
-    features::AbstractVector{T}) where {F1<:Function,F2<:Function,T<:NManifold}
+# function apply_f_on_unordered(f::F1, 
+#     cond::F2, 
+#     feature::T, 
+#     features::AbstractVector{T}) where {F1<:Function,F2<:Function,T<:NManifold}
 
-    if cond(feature) && is_active(feature)
-        f(feature)
-        return nothing
-    end
+#     if cond(feature) && is_active(feature)
+#         f(feature)
+#         return nothing
+#     end
     
-    for child_id in feature.childs 
-        apply_f_on_unordered(f, cond, features[child_id], features)
-    end
-    nothing
-end
+#     for child_id in feature.childs 
+#         apply_f_on_unordered(f, cond, features[child_id], features)
+#     end
+#     nothing
+# end
 
-apply_f_on_unordered_roots(f, feature, features) =
-    apply_f_on_unordered(f, is_root, feature, features)
+# apply_f_on_unordered_roots(f, feature, features) =
+#     apply_f_on_unordered(f, is_root, feature, features)
 
 
 
 """
 iterate_volume_areas(fun::F1, 
-    facedata_col::Dict{Int,FD}, 
-    topo::Topology{D}, volume_id::Int, 
+    facedata_col::Dict{Int32,FD}, 
+    topo::Topology{D}, volume_id::Int32, 
     cond::F2=is_root) where {D,F1,F2,FD} 
 
 Iterate over the areas of a volume and apply a function on the areas.
@@ -725,36 +807,21 @@ Iterate over the areas of a volume and apply a function on the areas.
 # Arguments
 - `fun::Function`: The function to apply on the areas. fun takes 
 the `root_area`, `facedata` and `topo` as arguments
-- `facedata_col::Dict{Int,FD}`: The dictionary of face data.
+- `facedata_col::Dict{Int32,FD}`: The dictionary of face data.
 - `topo::Topology{D}`: The topology to get the areas from.
-- `volume_id::Int`: The id of the volume to iterate over.
+- `volume_id::Int32`: The id of the volume to iterate over.
 - `cond::Function`: The condition to check if the area should be applied.
 """
-# function iterate_volume_areas(fun::F1, 
-# facedata_col::Dict{Int,FD}, 
-# topo::Topology{D}, volume_id::Int, 
-# cond::F2=is_root) where {D,F1,F2,FD} 
-
-#     area_ids = get_volume_area_ids(topo, volume_id)
-#     areas = get_areas(topo)
-#     for area_id in area_ids
-#         area = areas[area_id]
-#         apply_f_on_unordered(cond, area, areas) do root_area
-#             fun(root_area, facedata_col[root_area.id], topo)
-#         end
-#     end 
-# end
-
 function iterate_volume_areas(fun::F1, 
-    facedata_col::Dict{Int,FD},
+    facedata_col::Dict{Int32,FD},
     topo::Topology{D},
-    volume_id::Int,
-    cond::F2=is_root) where {D,F1,F2,FD}
+    volume_id::Int32,
+    cond::F2=x -> is_root(x,topo)) where {D,F1,F2,FD}
     
     area_ids = get_volume_area_ids(topo, volume_id)
     areas = get_areas(topo)
     @no_escape begin
-        aq = CustStack(stack = @alloc(Int,1000))
+        aq = CustStack(stack = @alloc(Int32,1000))
         
         for area_id in area_ids
             push!(aq,area_id)
@@ -767,8 +834,6 @@ function iterate_volume_areas(fun::F1,
                     continue
                 end
 
-# TODO: Check if this must be ifelse 
-
                 for child_id in root_area.childs
                     push!(aq,child_id)
                 end
@@ -780,13 +845,13 @@ end
 
 function iterate_volume_areas(fun::F1, 
     topo::Topology{D},
-    volume_id::Int,
-    cond::F2=is_root) where {D,F1,F2}
+    volume_id::Int32,
+    cond::F2=x -> is_root(x,topo)) where {D,F1,F2}
     
     area_ids = get_volume_area_ids(topo, volume_id)
     areas = get_areas(topo)
     @no_escape begin
-        aq = CustStack(stack = @alloc(Int,1000))
+        aq = CustStack(stack = @alloc(Int32,1000))
         
         for area_id in area_ids
             push!(aq,area_id)
@@ -905,7 +970,7 @@ x -> x + A*(x - c), where A = `make_A(c, diameter, vol_id)`.
 
 Arguments
 - `topo::Topology{3}`: 3D topology to modify in-place
-- `make_A`: function `(center::SVector{3,Float64}, diameter::Float64, vol_id::Int) -> 3x3 matrix`
+- `make_A`: function `(center::SVector{3,Float64}, diameter::Float64, vol_id::Int32) -> 3x3 matrix`
 - `is_boundary`: predicate `is_boundary(x)::Bool` identifying boundary nodes
 """
 function transform_topology_linear_elements!(
@@ -934,7 +999,7 @@ function transform_topology_linear_elements!(
 
     # Build node adjacency via edges: neighbors[i] lists nodes sharing an edge with i
     edge_nodes = get_edge_node_ids(topo)
-    neighbors = [Int[] for _ in 1:n_nodes]
+    neighbors = [Int32[] for _ in 1:n_nodes]
     for en in edge_nodes
         a = en[1]; b = en[2]
         push!(neighbors[a], b)
@@ -943,7 +1008,7 @@ function transform_topology_linear_elements!(
 
     # Select a subset with node and edge independence (no edge has both endpoints used)
     used = falses(n_nodes)
-    selected = Int[]
+    selected = Int32[]
     for vid in 1:n_vols
         is_candidate[vid] || continue
         conflict = false
@@ -970,7 +1035,7 @@ function transform_topology_linear_elements!(
     end
 
     # Helper to compute barycenter and diameter for a volume's nodes
-    function _center_and_diameter(node_ids::AbstractVector{Int})
+    function _center_and_diameter(node_ids::AbstractVector{Int32})
         c = zero(SVector{3,Float64})
         for nid in node_ids
             c += get_coords(nodes[nid])

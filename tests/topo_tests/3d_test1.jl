@@ -38,22 +38,25 @@ println("Coordinate at (2,2,2): ", coords[idxs[2,2,2]])
 # =============================================================================
 # Create hexahedral elements
 # =============================================================================
-
+ix(i, j, k) = Int32(idxs[i, j, k])
 for I in CartesianIndices((nx, ny, nz))
     i, j, k = Tuple(I)
     
     # Define face IDs for each hexahedron
     _face_ids = [
-        [idxs[i,j,k], idxs[i+1,j,k], idxs[i+1,j+1,k], idxs[i,j+1,k]],           # bottom
-        [idxs[i,j,k+1], idxs[i+1,j,k+1], idxs[i+1,j+1,k+1], idxs[i,j+1,k+1]],   # top
-        [idxs[i,j,k], idxs[i+1,j,k], idxs[i+1,j,k+1], idxs[i,j,k+1]],           # front 
-        [idxs[i+1,j,k], idxs[i+1,j+1,k], idxs[i+1,j+1,k+1], idxs[i+1,j,k+1]],   # right 
-        [idxs[i,j,k], idxs[i,j,k+1], idxs[i,j+1,k+1], idxs[i,j+1,k]],           # left
-        [idxs[i,j+1,k], idxs[i,j+1,k+1], idxs[i+1,j+1,k+1], idxs[i+1,j+1,k]]    # back
+        [ix(i,j,k), ix(i+1,j,k), ix(i+1,j+1,k), ix(i,j+1,k)],           # bottom
+        [ix(i,j,k+1), ix(i+1,j,k+1), ix(i+1,j+1,k+1), ix(i,j+1,k+1)],   # top
+        [ix(i,j,k), ix(i+1,j,k), ix(i+1,j,k+1), ix(i,j,k+1)],           # front 
+        [ix(i+1,j,k), ix(i+1,j+1,k), ix(i+1,j+1,k+1), ix(i+1,j,k+1)],   # right 
+        [ix(i,j,k), ix(i,j,k+1), ix(i,j+1,k+1), ix(i,j+1,k)],           # left
+        [ix(i,j+1,k), ix(i,j+1,k+1), ix(i+1,j+1,k+1), ix(i+1,j+1,k)]    # back
     ]
     
     add_volume!(_face_ids, topo)
 end
+
+
+
 
 # =============================================================================
 # Test topology queries
@@ -92,7 +95,7 @@ let topo = deepcopy(topo)
     # show(t)
 
     @show length(RootIterator{4}(topo))
-    # write_vtk(topo, "vtk/3d_test1")
+    write_vtk(topo, "vtk/3d_test1")
 end
 
 

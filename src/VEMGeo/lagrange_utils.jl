@@ -1,4 +1,4 @@
-function lagrange_shape_function(idx::Int, coord::Real, ::Val{O}, ::Val{U}) where {O, U}
+function lagrange_shape_function(idx::Integer, coord::Real, ::Val{O}, ::Val{U}) where {O, U}
     # Check if coord is in the valid range
     if !(coord >= -1 && coord <= 1)
         error("Coordinate must be in the range [-1, 1], got $coord")
@@ -26,7 +26,7 @@ function lagrange_shape_function(idx::Int, coord::Real, ::Val{O}, ::Val{U}) wher
 end
 
 
-function _get_scalar_basis(idx::Int, coord::Real, ::Val{0})
+function _get_scalar_basis(idx::Integer, coord::Real, ::Val{0})
     if idx == 1
         return 1.0
     else
@@ -35,7 +35,7 @@ function _get_scalar_basis(idx::Int, coord::Real, ::Val{0})
 end
 
 # Helper function to compute scalar basis functions
-function _get_scalar_basis(idx::Int, coord::Real, ::Val{1})
+function _get_scalar_basis(idx::Integer, coord::Real, ::Val{1})
     if idx == 1
         return 0.5 * (1 - coord)
     elseif idx == 2
@@ -45,7 +45,7 @@ function _get_scalar_basis(idx::Int, coord::Real, ::Val{1})
     end
 end
 
-function _get_scalar_basis(idx::Int, coord::Real, ::Val{2})
+function _get_scalar_basis(idx::Integer, coord::Real, ::Val{2})
     if idx == 1
         return 0.5 * coord * (coord - 1)
     elseif idx == 2
@@ -57,7 +57,7 @@ function _get_scalar_basis(idx::Int, coord::Real, ::Val{2})
     end
 end
 
-function _get_scalar_basis(idx::Int, coord::Real, ::Val{3})
+function _get_scalar_basis(idx::Integer, coord::Real, ::Val{3})
     if idx == 1
         return -1/16 * (coord - 1) * (9*coord^2 - 1)
     elseif idx == 2
@@ -71,7 +71,7 @@ function _get_scalar_basis(idx::Int, coord::Real, ::Val{3})
     end
 end
 
-function _get_scalar_basis(idx::Int, coord::Real, ::Val{4})
+function _get_scalar_basis(idx::Integer, coord::Real, ::Val{4})
     if idx == 1
         return 1/6 * (coord - 1) * coord * (coord - 1/2) * (coord + 1/2)
     elseif idx == 2
@@ -88,7 +88,7 @@ function _get_scalar_basis(idx::Int, coord::Real, ::Val{4})
 end
 
 # Convenience function for scalar output
-function lagrange_shape_function(idx::Int, coord::Real, ::Val{O}) where {O}
+function lagrange_shape_function(idx::Integer, coord::Real, ::Val{O}) where {O}
     return lagrange_shape_function(idx, coord, Val(O), Val(1))
 end
 

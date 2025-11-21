@@ -61,18 +61,19 @@ function create_rectangular_mesh(
 	add_node!.(coords, Ref(topo))
 
 	idxs = LinearIndices((nx+1, ny+1, nz+1))
+    ix(i, j, k) = Int32(idxs[i, j, k])
 
 	for I in CartesianIndices((nx, ny, nz))
 		i, j, k = Tuple(I)
 		
 		# Define face IDs for each hexahedron
 		_face_ids = [
-			[idxs[i,j,k], idxs[i+1,j,k], idxs[i+1,j+1,k], idxs[i,j+1,k]],           # bottom
-			[idxs[i,j,k+1], idxs[i+1,j,k+1], idxs[i+1,j+1,k+1], idxs[i,j+1,k+1]],   # top
-			[idxs[i,j,k], idxs[i+1,j,k], idxs[i+1,j,k+1], idxs[i,j,k+1]],           # front 
-			[idxs[i+1,j,k], idxs[i+1,j+1,k], idxs[i+1,j+1,k+1], idxs[i+1,j,k+1]],   # right 
-			[idxs[i,j,k], idxs[i,j,k+1], idxs[i,j+1,k+1], idxs[i,j+1,k]],           # left
-			[idxs[i,j+1,k], idxs[i,j+1,k+1], idxs[i+1,j+1,k+1], idxs[i+1,j+1,k]]    # back
+			[ix(i,j,k), ix(i+1,j,k), ix(i+1,j+1,k), ix(i,j+1,k)],           # bottom
+			[ix(i,j,k+1), ix(i+1,j,k+1), ix(i+1,j+1,k+1), ix(i,j+1,k+1)],   # top
+			[ix(i,j,k), ix(i+1,j,k), ix(i+1,j,k+1), ix(i,j,k+1)],           # front 
+			[ix(i+1,j,k), ix(i+1,j+1,k), ix(i+1,j+1,k+1), ix(i+1,j,k+1)],   # right 
+			[ix(i,j,k), ix(i,j,k+1), ix(i,j+1,k+1), ix(i,j+1,k)],           # left
+			[ix(i,j+1,k), ix(i,j+1,k+1), ix(i+1,j+1,k+1), ix(i+1,j+1,k)]    # back
 		]
 		
 		add_volume!(_face_ids, topo)
@@ -109,7 +110,7 @@ The new nodes are added in the order of the edges of the 2D mesh.
 # Returns
 - `mesh3d::Mesh{3,ET}`: The 3D mesh.
 """
-function extrude_to_3d(nz::Int,
+function extrude_to_3d(nz::Integer,
     mesh2d::Mesh{2,ET},
     zmax::Float64=1.0) where ET
 
@@ -132,22 +133,22 @@ function extrude_to_3d(nz::Int,
         new_nodes = Int[]
         for i in 1:nz
             first_node_id = get_area_node_ids(topo2d,element.id)[1]
-            face_ids = Vector{Int}[]
-            new_z = i * zmax / nz
+            face_ids = Vector{Int32}[]
+            new_z = i * zmax / nz 
 
             local_counter = Ref(1)
             iterate_element_edges(topo2d,element.id) do _, edge_id, _
                 # n1id,n2id = get_edge_node_ids(topo2d,edge_id)
                 idxp1 = get_next_idx(old_nodes,local_counter[])
-                n1id = old_nodes[local_counter[]]
-                n2id = old_nodes[idxp1]
+                n1id = old_nodes[local_counter[]] 
+                n2id = old_nodes[idxp1] 
                 
                 n1 = topo3.nodes[n1id]
                 n2 = topo3.nodes[n2id]
 
                 n4id = get!(nodes_added,n1id) do  
                     new_coord1 = SA[n1[1],n1[2], new_z]
-                    n4id = add_node!(new_coord1, topo3)
+                    n4id = add_node!(new_coord1, topo3) 
                     n4id
                 end
 
