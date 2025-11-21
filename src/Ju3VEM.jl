@@ -85,7 +85,6 @@ module VEMGeo
         get_area_node_ids, get_edge_node_ids,
         add_node!, add_area!, add_volume!,
         num_roots,
-        get_num_active_nodes, get_num_active_root_edges, get_num_active_root_areas, get_num_active_root_volumes,
 
         # Utilities
         get_next_idx, get_prev_idx, get_unique_values, find_single_intersec, max_node_distance,
@@ -120,7 +119,7 @@ module VEMGeo
         precompute_volume_monomials, compute_volume_integral_unshifted,
         
         # Topology transforms
-        transform_topology_planar!#, create_element_neighbour_list
+        transform_topology_planar!, create_element_neighbour_list
 end # module VEMGeo
 
 # Re-export the VEMGeo API from the top-level module

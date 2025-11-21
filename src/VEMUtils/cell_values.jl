@@ -5,7 +5,7 @@ mutable struct CellValues{D,U,ET,L1,L2,V<:AbstractVector}
     const mesh::Mesh{D,ET}
     const vnm ::NodeID2LocalID
 
-    const facedata_col::Dict{Int32,FaceData{D,L1,V}}
+    const facedata_col::Dict{Int,FaceData{D,L1,V}}
     volume_data ::VolumeIntegralData{L2}
 
     const dh::DofHandler{D,U}
@@ -19,11 +19,11 @@ function _create_facedata_col(mesh::Mesh{D,StandardEl{K}}) where {D,K}
 
 
     FI_type = Core.Compiler.return_type(precompute_face_monomials,
-            Tuple{Int32,Topology{D},Val{K_MAX}})
+            Tuple{Int,Topology{D},Val{K_MAX}})
 
     FD_Type = Core.Compiler.return_type(h1_projectors!,
-            Tuple{Int32,Mesh{3,StandardEl{K}},FI_type})
-    facedata_col = Dict{Int32,FD_Type}()
+            Tuple{Int,Mesh{3,StandardEl{K}},FI_type})
+    facedata_col = Dict{Int,FD_Type}()
 
     for face in RootIterator{3}(topo)
         facedata_col[face.id] = h1_projectors!(
@@ -69,7 +69,7 @@ function get_element_area(cv::CellValues)
 end
 
 
-function reinit!(el_id::Integer,cv::CellValues{3})
+function reinit!(el_id::Int,cv::CellValues{3})
     
     mesh = cv.mesh; topo = mesh.topo
     K = get_order(cv.mesh)
@@ -87,7 +87,7 @@ end
 @inline get_n_cell_dofs(cv::CellValues{D,U}) where {D,U} = U*get_n_nodes(cv.vnm)
 
 function get_cell_dofs(cv::CellValues{D,U}) where {D,U}
-    dofs = FixedSizeVector{Int32}(undef, U*get_n_nodes(cv.vnm))
+    dofs = FixedSizeVector{Int}(undef, U*get_n_nodes(cv.vnm))
     for (node_id,i) in cv.vnm.map
         node_dofs = get_dofs(cv.dh,node_id)
         for j in 1:U
@@ -157,6 +157,25 @@ end
 Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
 Base.size(ebf::ElementBaseFunctions) = (size(ebf.Π_star, 2),)
 Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M}}) where {D,O,U,L,M} = SVector{U,Polynomial{Float64,D,L}}
-Base.getindex(ebf::ElementBaseFunctions, idx::Integer) = unit_sol_proj(ebf.base,idx,ebf.Π_star)
+Base.getindex(ebf::ElementBaseFunctions, idx::Int) = unit_sol_proj(ebf.base,idx,ebf.Π_star)
 
 
+# function get_base_fun(ebf::ElementBaseFunctions, 
+#     idx::Int)
+#     return unit_sol_proj(ebf.base,idx,ebf.Π_star)
+# end
+
+# # iteration interface 
+# function Base.iterate(ebf::ElementBaseFunctions, state::Int=1)
+#     N = size(ebf.Π_star, 2) 
+#     state > N && return nothing
+#     return (get_base_fun(ebf, state), state + 1)
+# end
+
+# Base.length(ebf::ElementBaseFunctions) = size(ebf.Π_star, 2)
+
+# Base.eltype(::Type{ElementBaseFunctions{D,O,1,L,M}}) where {D,O,L,M} =
+#     Polynomial{Float64,D,L}  
+
+# Base.eltype(::Type{ElementBaseFunctions{D,O,U,L,M}}) where {D,O,U,L,M} =
+#     SVector{U,Polynomial{Float64,D,L}}

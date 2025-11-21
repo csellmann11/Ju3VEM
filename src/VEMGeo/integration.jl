@@ -6,20 +6,20 @@ Stores triangles as local indices into each face's node list.
 """
 struct FaceTriangulations3D
     topo::Topology{3}
-    area_tris::Vector{Vector{NTuple{3,Int32}}}
+    area_tris::Vector{Vector{NTuple{3,Int}}}
 end
 
 function FaceTriangulations3D(topo::Topology{3}; find_optimal_ear::Bool=false)
     nareas = length(get_areas(topo))
-    tris_per_area = Vector{Vector{NTuple{3,Int32}}}(undef, nareas)
+    tris_per_area = Vector{Vector{NTuple{3,Int}}}(undef, nareas)
     for area_id in 1:nareas
         gids = get_area_node_ids(topo, area_id)
         if isempty(gids)
-            tris_per_area[area_id] = NTuple{3,Int32}[]
+            tris_per_area[area_id] = NTuple{3,Int}[]
             continue
         end
         local_tris = triangulate_area_local_ids(topo, area_id; find_optimal_ear=find_optimal_ear)
-        tris = Vector{NTuple{3,Int32}}(undef, length(local_tris))
+        tris = Vector{NTuple{3,Int}}(undef, length(local_tris))
         for (i,t) in enumerate(local_tris)
             tris[i] = (t[1], t[2], t[3])
         end
@@ -42,12 +42,12 @@ end
 # end
 
 
-function get_face_integral(exp::StaticVector{D,<:Integer},face_id::Integer,fi::FaceIntegrals{D,L}) where {D,L}
+function get_face_integral(exp::StaticVector{D,Int},face_id::Int,fi::FaceIntegrals{D,L}) where {D,L}
     idx = get_exp_to_idx_dict(exp)
     return fi.integrals[face_id][idx]
 end
 
-function get_face_integral(m::Monomial,face_id::Integer,fi::FaceIntegrals{D,L}) where {D,L}
+function get_face_integral(m::Monomial,face_id::Int,fi::FaceIntegrals{D,L}) where {D,L}
     return get_face_integral(m.exp,face_id,fi)
 end
 
@@ -68,9 +68,9 @@ end
 
 
 
-@inline get_area_triangles(ft::FaceTriangulations3D, area_id::Integer) = ft.area_tris[area_id]
+@inline get_area_triangles(ft::FaceTriangulations3D, area_id::Int) = ft.area_tris[area_id]
 
-function integrate_polynomial_over_face(m::Monomial, face_id::Integer, topo::Topology{3}, ft)
+function integrate_polynomial_over_face(m::Monomial, face_id::Int, topo::Topology{3}, ft)
     area_node_ids = get_area_node_ids(topo, face_id)
     tris = get_area_triangles(ft, face_id)
 
@@ -98,7 +98,7 @@ function integrate_polynomial_over_face(m::Monomial, face_id::Integer, topo::Top
 end
 
 
-function integrate_polynomial_over_face(p::Polynomial, face_id::Integer, topo::Topology{3}, ft)
+function integrate_polynomial_over_face(p::Polynomial, face_id::Int, topo::Topology{3}, ft)
     int = 0.0
     n = nothing
     for (c,m) in zip(p.coeffs,p.base)
@@ -109,7 +109,7 @@ function integrate_polynomial_over_face(p::Polynomial, face_id::Integer, topo::T
     end
     return int,n
 end
-function integrate_polynomial_over_volume(m::Monomial, vol_id::Integer, topo::Topology{3}, ft)
+function integrate_polynomial_over_volume(m::Monomial, vol_id::Int, topo::Topology{3}, ft)
 
     exp1 = m.exp[1]
     exp = SVector(exp1+1, m.exp[2], m.exp[3])
@@ -131,7 +131,7 @@ function integrate_polynomial_over_volume(m::Monomial, vol_id::Integer, topo::To
     return int/(exp1+1)
 end
 
-function integrate_polynomial_over_volume(p::Polynomial, vol_id::Integer, topo::Topology{3}, ft)
+function integrate_polynomial_over_volume(p::Polynomial, vol_id::Int, topo::Topology{3}, ft)
     int = 0.0
     for (c,m) in zip(p.coeffs,p.base)
         monomial = m*c

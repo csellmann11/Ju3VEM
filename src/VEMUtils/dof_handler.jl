@@ -1,17 +1,17 @@
 
 struct DofHandler{D,U}
-    dof_mapping::Dict{Int32,SVector{U,Int64}}
+    dof_mapping::Dict{Int,SVector{U,Int}}
 end
 
 
 function DofHandler{U}(mesh::Mesh{D}) where {D,U}
 
     counter = 1
-    dof_mapping = Dict{Int32,SVector{U,Int64}}()
+    dof_mapping = Dict{Int,SVector{U,Int}}()
     for node in mesh.nodes
         node_id = get_id(node)
-        !is_active(node,mesh) && continue
-        dof_mapping[node_id] = SVector{U,Int64}(counter:counter+U-1)
+        !is_active(node) && continue
+        dof_mapping[node_id] = SVector{U,Int}(counter:counter+U-1)
         counter += U
     end
 
@@ -33,7 +33,7 @@ end
 
 
 function get_dofs!(
-    vec::AbstractVector{<:Integer},
+    vec::AbstractVector{Int},
     dh::DofHandler{D,U},
     nodes::AbstractVector{N}; 
     start = 1) where {D,U,N}
@@ -53,7 +53,7 @@ end
 function get_dofs(dh::DofHandler{D,U},
     nodes::AbstractVector) where {D,U}
 
-    vec = Vector{Int64}(undef,length(nodes)*U)
+    vec = Vector{Int}(undef,length(nodes)*U)
     get_dofs!(vec,dh,nodes)
     return vec
 end

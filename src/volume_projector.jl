@@ -70,10 +70,10 @@ function compute_face_integral_m2d_time_3dcoeffs(m2d::Monomial{T,2},
     return ∫m
 end
 
-function create_volume_bmat(volume_id::Integer,
+function create_volume_bmat(volume_id::Int,
     mesh::Mesh{3,ET},
     bcvol,hvol,abs_volume,
-    facedata_col::Dict{<:Integer,<:FaceData{3,L}},
+    facedata_col::Dict{Int,<:FaceData{3,L}},
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
 
@@ -184,7 +184,7 @@ end
 # end
 
 
-function _is_vertex_like_node(id::Integer,mesh::Mesh)::Bool 
+function _is_vertex_like_node(id::Int,mesh::Mesh)::Bool 
 
     n_vertices    = get_vertices(mesh)    |> length
     n_gauss_nodes = get_gauss_nodes(mesh) |> length 
@@ -197,7 +197,7 @@ function _handle_face_moments!(
     dmat::AbstractMatrix,
     mesh::Mesh{3,ET},
     bc_vol::SVector{3,Float64},
-    facedata_col::Dict{<:Integer,<:FaceData},
+    facedata_col::Dict{Int,<:FaceData},
     ntl,
     vol_id,
     hvol
@@ -241,7 +241,7 @@ function _handle_volume_moments!(
     dmat::AbstractMatrix,
     base3d,
     mesh::Mesh{3,ET},
-    vol_id::Integer,
+    vol_id::Int,
     ntl,
     hvol::Float64,
     vol_data::VolumeIntegralData,
@@ -268,9 +268,9 @@ function _handle_volume_moments!(
 
 end
 
-function create_volume_dmat(volume_id::Integer,
+function create_volume_dmat(volume_id::Int,
     mesh::Mesh{3,ET}, 
-    facedata_col::Dict{<:Integer,<:FaceData{3,L}},
+    facedata_col::Dict{Int,<:FaceData{3,L}},
     vol_data::VolumeIntegralData,
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
@@ -304,16 +304,16 @@ function create_volume_dmat(volume_id::Integer,
 end
 
 
-function LinearAlgebra.Matrix{T}(::Any,::Static.StaticInt{N},n::Integer) where {T,N}
+function LinearAlgebra.Matrix{T}(::Any,::Static.StaticInt{N},n::Int) where {T,N}
     return Matrix{T}(undef,N,n)
 end
 
 
 function create_volume_vem_projectors(
-    volume_id::Integer,
+    volume_id::Int,
     mesh::Mesh{3,ET}, 
     vol_data::VolumeIntegralData,
-    facedata_col::Dict{<:Integer,<:FaceData{3,L}},
+    facedata_col::Dict{Int,<:FaceData{3,L}},
     volume_node_mapping::NodeID2LocalID) where {K,L,ET<:ElType{K}}
 
     @assert K <= 2 "currently only implemented for K=1 and K=2"

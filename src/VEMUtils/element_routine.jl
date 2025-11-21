@@ -8,7 +8,7 @@ function build_kel_quad_point!(
     Nv::AbstractVector,
     ∇Nv::AbstractVector,
     f::F,
-    qpoint::Integer,
+    qpoint::Int,
     x::StaticVector{3,Float64},
     mat_law::Helmholtz,
     pars...) where {D,U,ET,F<:Function}
@@ -75,7 +75,7 @@ function build_local_kel_and_f!(
     kelement::CachedMatrix{Float64},
     rhs_element::CachedVector{Float64},
     cv::CellValues{D,U,ET},
-    element_id::Integer,
+    element_id::Int,
     f::F,
     fe_cv::FR.CellValues,
     mat_law::Helmholtz,
@@ -113,7 +113,7 @@ function build_local_kel_and_f!(
     test_volume = 0.0
 
     for tet_local_ids in tets_local
-        tets_global_ids = SVector{4,Int32}(l2g[id] for id in tet_local_ids)
+        tets_global_ids = SVector{4,Int}(l2g[id] for id in tet_local_ids)
         tet_nodes = FR.Vec{D}.(get_nodes(cv.mesh.topo)[tets_global_ids])
         FR.reinit!(fe_cv,tet_nodes)
 
@@ -142,7 +142,7 @@ function build_local_kel_and_f!(
     kelement::CachedMatrix{Float64},
     rhs_element::CachedVector{Float64},
     cv::CellValues{D,U,ET},
-    element_id::Integer,
+    element_id::Int,
     f::F,
     mat_law::Helmholtz,
     γ::Float64 = 1/4,

@@ -10,13 +10,13 @@
 const __GAUSS_LEGENDRE_PW = Dict{Int,Tuple{Vector{Float64},Vector{Float64}}}()
 const __GAUSS_LOBATTO_PW  = Dict{Int,Tuple{Vector{Float64},Vector{Float64}}}()
 
-function get_gauss_legendre(n::Integer)
+function get_gauss_legendre(n::Int)
     get!(__GAUSS_LEGENDRE_PW,n) do
         FastGaussQuadrature.gausslegendre(n)
     end
 end
 
-function get_gauss_lobatto(n::Integer)
+function get_gauss_lobatto(n::Int)
     get!(__GAUSS_LOBATTO_PW,n) do
         FastGaussQuadrature.gausslobatto(n)
     end
@@ -118,7 +118,7 @@ end
 @inline get_bc(fd::FaceIntegralData)   = fd.bc
 
 
-struct FaceData{D,L,FV<:FlattenVecs{3,Int32}} 
+struct FaceData{D,L,FV<:FlattenVecs{3,Int}} 
     face_node_ids::FV 
     dΩ           ::FaceIntegralData{D,L} 
     ΠsL2         ::FixedSizeMatrixDefault{Float64}
@@ -172,7 +172,7 @@ end
 
 function face2d_sym_integral(
     node_coords::AbstractVector{<:StaticVector{D,T}}, 
-    e1::Integer,e2::Integer,bc::StaticVector{2,T},
+    e1::Int,e2::Int,bc::StaticVector{2,T},
     plane::D2FaceParametrization{D}) where {D,T}
 
     int_val = zero(T) 
@@ -247,7 +247,7 @@ function precompute_face_monomials(
 end 
 
 function precompute_face_monomials(
-    face_id::Integer,topo::Topology{D},::Val{K}) where {D,K}
+    face_id::Int,topo::Topology{D},::Val{K}) where {D,K}
 
     face_node_ids = get_area_node_ids(topo,face_id)
     # face_node_ids = get_iterative_area_vertex_ids(face_id,topo) #TODO: remove
@@ -370,7 +370,7 @@ end
 
 
 """
-    precompute_volume_monomials(vol_id::Integer,topo::Topology,facedata_col::Dict{<:Integer,<:FaceData{3}},::Val{K}) where {K}
+    precompute_volume_monomials(vol_id::Int,topo::Topology,facedata_col::Dict{Int,<:FaceData{3}},::Val{K}) where {K}
 
 Precomputes the integrals of the monomials on a volume up to the monomial order K.
 
@@ -378,9 +378,9 @@ Precomputes the integrals of the monomials on a volume up to the monomial order 
 # WARNING: currently requires the volume to be convex (_some_point_inside) must be actually inside the volume
 
 """
-function precompute_volume_monomials(vol_id::Integer,
+function precompute_volume_monomials(vol_id::Int,
     topo::Topology,
-    facedata_col::Dict{<:Integer,<:FaceData{3}},::Val{K_MAX}, 
+    facedata_col::Dict{Int,<:FaceData{3}},::Val{K_MAX}, 
     shift_bc = true) where {K_MAX}
 
 

@@ -1,4 +1,4 @@
-function _get_dunavant_gauss_tridata(n::Integer)
+function _get_dunavant_gauss_tridata(n::Int)
     if n == 1
         # runic: off
         xw = [
@@ -108,7 +108,7 @@ struct TriangleQuadRule{T}
     points::Vector{SVector{2,T}}
 end
 
-function TriangleQuadRule(::Type{T}, order::Integer) where {T}
+function TriangleQuadRule(::Type{T}, order::Int) where {T}
     data = _get_dunavant_gauss_tridata(order)
     n_points = size(data, 1)
     points = Vector{SVector{2, T}}(undef, n_points)

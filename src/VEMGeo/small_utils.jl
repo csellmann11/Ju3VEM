@@ -33,13 +33,13 @@ end
 
 
  
-function get_unique_values(v::AbstractVector{<:AbstractVector{I}},
-    ids::AbstractVector{<:Integer}) where {I<:Integer}
+function get_unique_values(v::V,
+    ids::AbstractVector{Int}) where {V}
 
     @assert maximum(ids) <= maximum(keys(v)) "ids are out of bounds"
     max_len = sum(length,v[i] for i in ids)
     pointer = 0
-    _unique_values = ID_VEC_TYPE{I}(undef, max_len)
+    _unique_values = ID_VEC_TYPE{Int}(undef, max_len)
     for id in ids
         values = v[id]
         for value in values
@@ -55,24 +55,24 @@ function get_unique_values(v::AbstractVector{<:AbstractVector{I}},
 end
 
 """
-    get_unique_values(v::AbstractVector{<:AbstractVector{<:Integer}})
+    get_unique_values(v::AbstractVector{<:AbstractVector{Int}})
 # Description:
 -   returns the unique ids in the vector
 # Arguments:
-`v::AbstractVector{<:AbstractVector{<:Integer}}`: the vector to get the unique ids from
+`v::AbstractVector{<:AbstractVector{Int}}`: the vector to get the unique ids from
 # Returns:
- `Vector{<:Integer}`: the unique ids in the vector
+ `Vector{Int}`: the unique ids in the vector
 # Example:
     get_unique_values([[1,2,3],[4,5,6],[1,2,3]]) == [1,2,3,4,5,6]
 """
-function get_unique_values(v::AbstractVector{<:AbstractVector{<:Integer}})
+function get_unique_values(v::AbstractVector{<:AbstractVector{Int}})
 
     return get_unique_values(v,1:length(v))
 end
 
 
-function find_single_intersec(vecs::Vararg{AbstractVector{<:Integer},N}; 
-    ids::AbstractVector{<:Integer} = 1:N) where N
+function find_single_intersec(vecs::Vararg{AbstractVector{Int},N}; 
+    ids::AbstractVector{Int} = 1:N) where N
     for a in vecs[first(ids)]
         all(a in vecs[i] for i in @views ids[2:end]) && return a
     end
@@ -81,8 +81,8 @@ function find_single_intersec(vecs::Vararg{AbstractVector{<:Integer},N};
 end
 
 
-function find_single_intersec(vecs_col::AbstractVector{<:AbstractVector{<:Integer}},
-    ids::AbstractVector{<:Integer} = 1:length(vecs_col))
+function find_single_intersec(vecs_col::AbstractVector{<:AbstractVector{Int}},
+    ids::AbstractVector{Int} = 1:length(vecs_col))
     for a in vecs_col[first(ids)]
         all(a in vecs_col[i] for i in @views ids[2:end]) && return a
     end
@@ -90,13 +90,13 @@ function find_single_intersec(vecs_col::AbstractVector{<:AbstractVector{<:Intege
 
 end
 """
-    find_single_intersec(vecs::AbstractVector{<:AbstractVector{<:Integer}})
+    find_single_intersec(vecs::AbstractVector{<:AbstractVector{Int}})
 # Description:
 -   returns the single intersection of the vectors
 -   returns the first intersection found if there are multiple
 -   returns 0 if no intersection is found
 # Arguments:
-`vecs::AbstractVector{<:AbstractVector{<:Integer}}`: the vectors to find the single intersection of
+`vecs::AbstractVector{<:AbstractVector{Int}}`: the vectors to find the single intersection of
 # Returns:
 `Int`: the single intersection of the vectors
 # Example:
@@ -110,7 +110,7 @@ end
 
 
 function max_node_distance(nodes::AbstractVector{V},
-    ids::AbstractVector{<:Integer}) where {T<:Real,V <: AbstractVector{T}}
+    ids::AbstractVector{Int}) where {T<:Real,V <: AbstractVector{T}}
     max_dist = zero(T)
     n_nodes = length(ids) 
     @inbounds for i in 1:n_nodes-1, j in i+1:n_nodes
@@ -123,18 +123,24 @@ end
 
 
 
-function max_node_distance(nodes::AbstractVector) 
+function max_node_distance(nodes::AbstractVector{V}) where {T<:Real,V <: AbstractVector{T}}
+    # max_dist = zero(T)
+    # n_nodes = length(nodes) 
+    # @inbounds for i in 1:n_nodes-1, j in i+1:n_nodes
+    #     n1 = nodes[i]; n2 = nodes[j]
+    #     dist = norm(n2-n1)
+    #     max_dist = max(max_dist, dist)
+    # end
+    # return max_dist
+
     return max_node_distance(nodes,1:length(nodes))
 end
 
 
 
-function resize_with_trailing_zeros!(v::AbstractVector{T},size::Integer) where T
-    current_size = length(v)
-    resize!(v,size)
-    v[current_size+1:end] .= zero(T)
-    v
-end
+
+
+
 
 function resize_and_fill!(dest::AbstractVector,data)
     resize!(dest,size(data)|>only)
@@ -144,12 +150,14 @@ function resize_and_fill!(dest::AbstractVector,data)
 end
 
 function resize_and_fill!(dest::AbstractVector,
-    data,ids::AbstractVector{<:Integer})
+    data,ids::AbstractVector{Int})
     resize!(dest,size(ids)|>only)
     for i in eachindex(dest,ids)
         dest[i] = data[ids[i]]
     end
 end
+
+
 
 
 function get_unscaled_normal(n1::StaticVector{2,Float64},n2::StaticVector{2,Float64})

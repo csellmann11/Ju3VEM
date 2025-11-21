@@ -3,12 +3,12 @@ using ..VEMGeo: FaceData
 using OrderedCollections: OrderedDict
 
 struct NodeID2LocalID 
-    map                  ::OrderedDict{Int32,Int16}
+    map                  ::OrderedDict{Int,Int16}
     counter              ::MVector{4,Int16} 
 end
 
-function NodeID2LocalID(;sizehint::Integer=100) 
-    map = Dict{Int32,Int16}()
+function NodeID2LocalID(;sizehint::Int=100) 
+    map = Dict{Int,Int16}()
     sizehint!(map,sizehint)
     NodeID2LocalID(map,zero(MVector{4,Int16}))
 end
@@ -16,7 +16,7 @@ end
 @inline get_n_nodes(ntl::NodeID2LocalID) = length(ntl.map)
 
 function add_field!(ntl::NodeID2LocalID,
-    key::Integer,
+    key::Int,
     ::Val{N}) where N
 
     id = get!(ntl.map,key) do 
@@ -26,20 +26,20 @@ function add_field!(ntl::NodeID2LocalID,
     id
 end
 
-@inline add_vertex_id!(ntl::NodeID2LocalID,key::Integer) = add_field!(ntl,key,Val(1))
-@inline add_edge_vertex_id!(ntl::NodeID2LocalID,key::Integer) = add_field!(ntl,key,Val(2))
-@inline add_face_moment_id!(ntl::NodeID2LocalID,key::Integer) = add_field!(ntl,key,Val(3))
-@inline add_volume_moment_id!(ntl::NodeID2LocalID,key::Integer) = add_field!(ntl,key,Val(4))
+@inline add_vertex_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(1))
+@inline add_edge_vertex_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(2))
+@inline add_face_moment_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(3))
+@inline add_volume_moment_id!(ntl::NodeID2LocalID,key::Int) = add_field!(ntl,key,Val(4))
 
 
-@inline get_local_id(ntl::NodeID2LocalID,key::Integer) = ntl.map[key]
+@inline get_local_id(ntl::NodeID2LocalID,key::Int) = ntl.map[key]
 
 
 # TODO: remove dependency on type FaceData
 function create_node_mapping!(
     ntl::NodeID2LocalID,
-    volume_id::Integer,mesh::Mesh{D,ET},
-    facedata_col::Dict{<:Integer,<:FaceData{D,L}}) where {D,L,K,ET<:ElType{K}}
+    volume_id::Int,mesh::Mesh{D,ET},
+    facedata_col::Dict{Int,<:FaceData{D,L}}) where {D,L,K,ET<:ElType{K}}
 
 
     empty!(ntl.map)

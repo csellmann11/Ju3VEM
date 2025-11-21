@@ -140,7 +140,7 @@ end
 end
 
 #TODO: make face_id part of the face_data
-function h1_projectors!(face_id::Integer,mesh::Mesh{D,ET},
+function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
                        dΩ::FaceIntegralData) where {D,O,ET<:ElType{O}}
 
     @assert face_id > 0 "face_id is not positive"
@@ -152,7 +152,7 @@ function h1_projectors!(face_id::Integer,mesh::Mesh{D,ET},
     base   = get_base(BaseInfo{2,O,1}())
 
     face  = get_areas(topo)[face_id]
-    full_node_ids = FlattenVecs{3,Int32}()
+    full_node_ids = FlattenVecs{3,Int}()
     get_iterative_area_node_ids!(full_node_ids,face,mesh)
 
  
