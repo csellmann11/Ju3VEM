@@ -197,15 +197,21 @@ end # module VEMUtils
 
 @reexport using .VEMUtils
 
-using PrecompileTools: @compile_workload    # this is a small dependency
+using PrecompileTools: @compile_workload
 
+# Keep package precompilation bounded. The full Poisson examples also compile
+# symbolic material differentiation and order-two quadrature/assembly, which can
+# exhaust small cluster allocations even though their meshes are small.
+# Those examples remain available in tests/full_problems for explicit runs.
 @compile_workload begin
-
-    include("../tests/full_problems/poisson_prec.jl")
-    include("../tests/full_problems/poisson_voronoi_second_order_prec.jl")
-
+    let
+        mesh = create_unit_rectangular_mesh(1, 1, 1, StandardEl{1})
+        cv = CellValues{1}(mesh)
+        element = first(RootIterator{4}(mesh.topo))
+        reinit!(element.id, cv)
+        create_volume_vem_projectors(
+            element.id, cv.mesh, cv.volume_data, cv.facedata_col, cv.vnm)
+    end
 end
-
-
 
 end # module Ju3VEM
