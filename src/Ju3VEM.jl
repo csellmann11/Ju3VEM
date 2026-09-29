@@ -2,6 +2,11 @@ module Ju3VEM
 
 using Reexport
 
+# Public dependency aliases used by downstream applications.
+# Define these independently of the precompile workload.
+import FixedSizeArrays
+import Ferrite as FR
+
 include("StructMechanics/material_laws.jl")
 @reexport using .MaterialLaws
 
