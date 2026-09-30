@@ -332,7 +332,8 @@ function create_volume_vem_projectors(
     proj_s = FixedSizeMatrix{Float64}(undef,size(gmat,1),size(bmat,2))
     proj   = FixedSizeMatrix{Float64}(undef,size(dmat,1),size(proj_s,2))
     
-    Octavian.matmul!(proj_s,inv(gmat),bmat)
+    # As for face projectors, use mul! for the immutable static inverse.
+    mul!(proj_s,inv(gmat),bmat)
     Octavian.matmul!(proj,dmat,proj_s)
     return proj_s, proj
 end

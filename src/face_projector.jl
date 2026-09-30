@@ -175,7 +175,9 @@ function h1_projectors!(face_id::Int,mesh::Mesh{D,ET},
         Π_star = face_data.ΠsL2 
     end
 
-    Octavian.matmul!(Π_star,invG_mat,B_mat)
+    # Keep the immutable static inverse out of Octavian's pointer-based kernel.
+    # That path corrupts projector coefficients on Julia 1.12.
+    mul!(Π_star,invG_mat,B_mat)
 
 
     return face_data
